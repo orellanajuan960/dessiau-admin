@@ -336,8 +336,8 @@ export function ProductImportDialog({ open, onOpenChange, onImportComplete }: {
 
         {/* Step: Preview */}
         {step === 'preview' && (
-          <div className="flex-1 flex flex-col gap-3 py-2 min-h-0">
-            <div className="flex items-center gap-2 text-sm">
+          <div className="flex-1 flex flex-col gap-3 py-2 min-h-0 overflow-hidden">
+            <div className="shrink-0 flex items-center gap-2 text-sm">
               <Badge variant="secondary">{fileName}</Badge>
               <Badge variant="outline">{parsedRows.length} productos</Badge>
               {unmappedHeaders.length > 0 && (
@@ -347,7 +347,7 @@ export function ProductImportDialog({ open, onOpenChange, onImportComplete }: {
               )}
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="shrink-0 flex items-center gap-2">
               <Checkbox
                 id="update-existing"
                 checked={updateExisting}
@@ -358,9 +358,9 @@ export function ProductImportDialog({ open, onOpenChange, onImportComplete }: {
               </label>
             </div>
 
-            <ScrollArea className="flex-1 border rounded-lg">
+            <div className="flex-1 min-h-0 border rounded-lg overflow-auto">
               <table className="w-full text-xs">
-                <thead className="bg-muted/50 sticky top-0">
+                <thead className="bg-muted/50 sticky top-0 z-10">
                   <tr>
                     <th className="text-left p-2 font-medium">#</th>
                     <th className="text-left p-2 font-medium">Nombre</th>
@@ -390,9 +390,9 @@ export function ProductImportDialog({ open, onOpenChange, onImportComplete }: {
                   ... y {parsedRows.length - 100} productos más
                 </p>
               )}
-            </ScrollArea>
+            </div>
 
-            <DialogFooter className="shrink-0">
+            <DialogFooter className="shrink-0 pt-2 border-t">
               <Button variant="outline" onClick={() => setStep('upload')}>Volver</Button>
               <Button onClick={handleImport} disabled={importing || parsedRows.length === 0}>
                 {importing ? (
