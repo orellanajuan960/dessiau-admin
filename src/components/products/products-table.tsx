@@ -299,8 +299,8 @@ export function ProductsTable() {
           body: JSON.stringify({
             ...body,
             active: formActive,
-            initialStock: formStock !== '' ? parseInt(formStock) : undefined,
-            minStock: formMinStock !== '' ? parseInt(formMinStock) : undefined,
+            initialStock: formStock !== '' ? parseFloat(formStock) : undefined,
+            minStock: formMinStock !== '' ? parseFloat(formMinStock) : undefined,
           }),
         })
         const data = await res.json()
@@ -315,8 +315,8 @@ export function ProductsTable() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             ...body,
-            initialStock: formStock !== '' ? parseInt(formStock) : undefined,
-            minStock: formMinStock !== '' ? parseInt(formMinStock) : undefined,
+            initialStock: formStock !== '' ? parseFloat(formStock) : undefined,
+            minStock: formMinStock !== '' ? parseFloat(formMinStock) : undefined,
           }),
         })
         const data = await res.json()
@@ -685,7 +685,7 @@ export function ProductsTable() {
       <Dialog open={dialogOpen} onOpenChange={(open) => {
         if (!open) setDialogOpen(false)
       }}>
-        <DialogContent className="sm:max-w-md overflow-hidden">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
               {editProduct ? 'Editar Producto' : 'Nuevo Producto'}
@@ -808,8 +808,8 @@ export function ProductsTable() {
               <div className="space-y-2">
                 <Label htmlFor="pcat">Categoría</Label>
                 <Select value={formCategory} onValueChange={setFormCategory}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Sin categoría" className="truncate" />
+                  <SelectTrigger className="w-full overflow-hidden [&_[data-slot=select-value]]:min-w-0">
+                    <SelectValue placeholder="Sin categoría" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">Sin categoría</SelectItem>
@@ -869,7 +869,7 @@ export function ProductsTable() {
                 <Input
                   id="pstock"
                   type="number"
-                  step="1"
+                  step="any"
                   min="0"
                   value={formStock}
                   onChange={(e) => setFormStock(e.target.value)}
@@ -881,7 +881,7 @@ export function ProductsTable() {
                 <Input
                   id="pminstock"
                   type="number"
-                  step="1"
+                  step="any"
                   min="0"
                   value={formMinStock}
                   onChange={(e) => setFormMinStock(e.target.value)}
