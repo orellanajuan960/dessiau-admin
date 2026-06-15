@@ -1,4 +1,4 @@
-# JO-Administrativo
+# Dessisau-Admin
 
 Sistema ERP/POS para gestión empresarial. Ventas, inventario, caja, compras y finanzas.
 
