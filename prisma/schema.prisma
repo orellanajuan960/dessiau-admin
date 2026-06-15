@@ -268,7 +268,7 @@ model CashRegister {
   name        String?
   userId      String
   branchId    String
-  currencyId  String    @default("")
+  currencyId  String?
   openingDate DateTime  @default(now())
   closingDate DateTime?
   initialAmt  Float     @default(0)

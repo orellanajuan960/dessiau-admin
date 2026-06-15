@@ -32,11 +32,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Get base currency for the register
+    const baseCurrency = await db.currency.findFirst({ where: { isBase: true } })
+
     const register = await db.cashRegister.create({
       data: {
         name: name?.trim() || null,
         userId,
         branchId: effectiveBranchId,
+        currencyId: baseCurrency?.id || '',
         initialAmt: initialAmt || 0,
         currentAmt: initialAmt || 0,
         status: 'abierta',
