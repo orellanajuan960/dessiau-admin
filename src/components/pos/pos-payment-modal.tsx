@@ -109,20 +109,21 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
 
   const ivaEnabled = useSetting('ivaEnabled')
   const ivaRate = Number(useSetting('ivaRate')) || 0
+  const multiEnabledSetting = useSetting('multiCurrencyEnabled') as boolean
   const localInfo = getCurrencyForCountry(country)
   const localCode = localInfo?.code || ''
 
   // Calculate cart totals with per-item currency conversion
   const { subtotalRef, subtotalLocal } = useMemo(() => {
     return calcCartTotals(items, {
-      multiEnabled: useSetting('multiCurrencyEnabled') as boolean,
+      multiEnabled: multiEnabledSetting,
       exchangeRate: exchangeRate as number,
       referenceCurrency: referenceCurrency,
       localCode,
       eurRate,
       usdRate,
     })
-  }, [items, exchangeRate, referenceCurrency, localCode, eurRate, usdRate])
+  }, [items, exchangeRate, referenceCurrency, localCode, eurRate, usdRate, multiEnabledSetting])
 
   const subtotal = subtotalRef
   const ivaAmountLocal = ivaEnabled ? Math.round(subtotalLocal * (ivaRate / 100) * 100) / 100 : 0
