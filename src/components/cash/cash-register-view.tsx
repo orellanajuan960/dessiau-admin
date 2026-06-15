@@ -55,7 +55,7 @@ import {
   Wallet, Plus, ArrowUpCircle, ArrowDownCircle, Lock, Eye, Loader2,
   UserCircle, AlertTriangle, Banknote, ClipboardCheck, CheckCircle2,
   Clock, ShoppingCart, Building2, TrendingUp, CircleDollarSign,
-  ChevronDown, ChevronRight,
+  ChevronDown, ChevronRight, ChevronUp,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -273,6 +273,29 @@ export function CashRegisterView() {
   const [withdrawalRegId, setWithdrawalRegId] = useState<string | null>(null)
   const [withdrawalAmount, setWithdrawalAmount] = useState('')
   const [withdrawalConcept, setWithdrawalConcept] = useState('')
+
+  // Sales detail for registers
+  const [salesDetail, setSalesDetail] = useState<Record<string, {
+    methodBreakdown: Array<{ method: string; methodName: string; isCredit: boolean; count: number; total: number }>
+    creditSales: Array<{ saleId: string; saleDate: string; saleNumber: string; clientName: string; total: number; pendingBalance: number; products: Array<{ name: string; quantity: number; lineTotal: number }> }>
+    sales: Array<{ id: string; date: string; number: string; total: number; status: string; clientName: string; userName: string; payments: Array<{ method: string; amount: number; currencyCode: string }>; products: Array<{ name: string; quantity: number; lineTotal: number }> }>
+    totalSales: number; totalCash: number; totalCredit: number; totalOther: number
+  }>>({})
+  const [loadingDetail, setLoadingDetail] = useState<Record<string, boolean>>({})
+  const [expandedRegDetail, setExpandedRegDetail] = useState<string | null>(null)
+
+  const fetchSalesDetail = async (regId: string) => {
+    if (salesDetail[regId]) return
+    setLoadingDetail(prev => ({ ...prev, [regId]: true }))
+    try {
+      const data = await api.get(`/api/cash-register/${regId}/sales`)
+      setSalesDetail(prev => ({ ...prev, [regId]: data }))
+    } catch {
+      toast.error('Error al cargar detalle de ventas')
+    } finally {
+      setLoadingDetail(prev => ({ ...prev, [regId]: false }))
+    }
+  }
 
   // Arqueo de Caja state
   const [showAudit, setShowAudit] = useState(false)
@@ -773,6 +796,85 @@ export function CashRegisterView() {
                       </div>
                     </div>
 
+                    {/* Sales detail toggle + breakdown */}
+                    {reg._count.sales > 0 && (
+                      <div className="space-y-2">
+                        <button
+                          className="flex items-center gap-1.5 text-xs text-primary hover:underline w-full text-left"
+                          onClick={() => {
+                            if (expandedRegDetail === reg.id) {
+                              setExpandedRegDetail(null)
+                            } else {
+                              setExpandedRegDetail(reg.id)
+                              fetchSalesDetail(reg.id)
+                            }
+                          }}
+                        >
+                          {expandedRegDetail === reg.id
+                            ? <ChevronUp className="h-3 w-3" />
+                            : <ChevronDown className="h-3 w-3" />
+                          }
+                          Ver desglose de ventas
+                        </button>
+                        {expandedRegDetail === reg.id && (
+                          <div className="rounded-md border bg-muted/30 p-2.5 space-y-2 max-h-60 overflow-y-auto">
+                            {loadingDetail[reg.id] ? (
+                              <div className="flex items-center justify-center py-4">
+                                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                              </div>
+                            ) : salesDetail[reg.id] ? (
+                              <>
+                                {/* Method breakdown */}
+                                <div className="space-y-1.5">
+                                  {salesDetail[reg.id].methodBreakdown.map(mb => (
+                                    <div key={mb.method} className="flex items-center justify-between text-xs">
+                                      <div className="flex items-center gap-1.5">
+                                        {mb.isCredit && <Clock className="h-3 w-3 text-amber-600" />}
+                                        <span className={mb.isCredit ? 'text-amber-700 dark:text-amber-400 font-medium' : 'text-muted-foreground'}>
+                                          {mb.methodName}
+                                        </span>
+                                        <span className="text-muted-foreground">({mb.count})</span>
+                                      </div>
+                                      <span className="font-semibold tabular-nums">{fmtBase(mb.total)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                                {/* Credit sales detail */}
+                                {salesDetail[reg.id].creditSales.length > 0 && (
+                                  <>
+                                    <Separator />
+                                    <div className="space-y-2">
+                                      <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">
+                                        Ventas a Crédito
+                                      </p>
+                                      {salesDetail[reg.id].creditSales.map(cs => (
+                                        <div key={cs.saleId} className="rounded border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 p-2 space-y-1">
+                                          <div className="flex items-center justify-between">
+                                            <span className="text-xs font-medium">{cs.clientName}</span>
+                                            <span className="text-xs font-bold tabular-nums">{fmtBase(cs.total)}</span>
+                                          </div>
+                                          <div className="text-[11px] text-muted-foreground space-y-0.5">
+                                            {cs.products.map((p, i) => (
+                                              <p key={i}>{p.name} x{p.quantity} — {fmtBase(p.lineTotal)}</p>
+                                            ))}
+                                            {cs.pendingBalance > 0 && (
+                                              <p className="text-amber-600 dark:text-amber-400 font-medium">
+                                                Saldo pendiente: {fmtBase(cs.pendingBalance)}
+                                              </p>
+                                            )}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </>
+                                )}
+                              </>
+                            ) : null}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     {/* Action buttons */}
                     <Separator />
                     <div className="flex items-center gap-1.5 flex-wrap">
@@ -795,6 +897,7 @@ export function CashRegisterView() {
                                 setCloseRegId(reg.id)
                                 setCloseActual('')
                                 setShowClose(true)
+                                fetchSalesDetail(reg.id)
                               }}>
                                 <Lock className="h-4 w-4" />
                               </Button>
@@ -969,6 +1072,81 @@ export function CashRegisterView() {
                               <p className="font-medium">{reg._count.sales}</p>
                             </div>
                           </div>
+
+                          {/* Sales detail for closed register */}
+                          {reg._count.sales > 0 && (
+                            <div className="mt-3">
+                              <button
+                                className="flex items-center gap-1.5 text-xs text-primary hover:underline"
+                                onClick={() => {
+                                  if (expandedRegDetail === reg.id) {
+                                    setExpandedRegDetail(null)
+                                  } else {
+                                    setExpandedRegDetail(reg.id)
+                                    fetchSalesDetail(reg.id)
+                                  }
+                                }}
+                              >
+                                {expandedRegDetail === reg.id
+                                  ? <ChevronUp className="h-3 w-3" />
+                                  : <ChevronDown className="h-3 w-3" />
+                                }
+                                Ver desglose de ventas y créditos
+                              </button>
+                              {expandedRegDetail === reg.id && (
+                                <div className="mt-2 rounded-md border bg-muted/30 p-2.5 space-y-2 max-h-60 overflow-y-auto">
+                                  {loadingDetail[reg.id] ? (
+                                    <div className="flex items-center justify-center py-4">
+                                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                                    </div>
+                                  ) : salesDetail[reg.id] ? (
+                                    <>
+                                      <div className="space-y-1.5">
+                                        {salesDetail[reg.id].methodBreakdown.map(mb => (
+                                          <div key={mb.method} className="flex items-center justify-between text-xs">
+                                            <div className="flex items-center gap-1.5">
+                                              {mb.isCredit && <Clock className="h-3 w-3 text-amber-600" />}
+                                              <span className={mb.isCredit ? 'text-amber-700 dark:text-amber-400 font-medium' : 'text-muted-foreground'}>
+                                                {mb.methodName}
+                                              </span>
+                                              <span className="text-muted-foreground">({mb.count})</span>
+                                            </div>
+                                            <span className="font-semibold tabular-nums">{fmtBase(mb.total)}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                      {salesDetail[reg.id].creditSales.length > 0 && (
+                                        <>
+                                          <Separator />
+                                          <div className="space-y-2">
+                                            <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Ventas a Crédito</p>
+                                            {salesDetail[reg.id].creditSales.map(cs => (
+                                              <div key={cs.saleId} className="rounded border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 p-2 space-y-1">
+                                                <div className="flex items-center justify-between">
+                                                  <span className="text-xs font-medium">{cs.clientName}</span>
+                                                  <span className="text-xs font-bold tabular-nums">{fmtBase(cs.total)}</span>
+                                                </div>
+                                                <div className="text-[11px] text-muted-foreground space-y-0.5">
+                                                  {cs.products.map((p, i) => (
+                                                    <p key={i}>{p.name} x{p.quantity} — {fmtBase(p.lineTotal)}</p>
+                                                  ))}
+                                                  {cs.pendingBalance > 0 && (
+                                                    <p className="text-amber-600 dark:text-amber-400 font-medium">
+                                                      Saldo pendiente: {fmtBase(cs.pendingBalance)}
+                                                    </p>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </>
+                                      )}
+                                    </>
+                                  ) : null}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1134,51 +1312,138 @@ export function CashRegisterView() {
 
       {/* Close Dialog */}
       <Dialog open={showClose} onOpenChange={setShowClose}>
-        <DialogContent className="sm:max-w-md">
+                <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Lock className="h-5 w-5 text-red-600" />
               Cerrar Caja
             </DialogTitle>
-            <DialogDescription>Confirma el monto real en caja para cerrar.</DialogDescription>
+            <DialogDescription>Revisa el resumen y confirma el monto real en caja.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             {closeRegId && (() => {
               const reg = registers.find(r => r.id === closeRegId)
+              const detail = salesDetail[closeRegId]
               return reg ? (
-                <div className="rounded-md bg-muted p-3 space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Caja:</span>
-                    <span className="font-medium">{reg.name || '—'}</span>
+                <>
+                  <div className="rounded-md bg-muted p-3 space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Caja:</span>
+                      <span className="font-medium">{reg.name || '\u2014'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Cajero:</span>
+                      <span className="font-medium">{reg.user.name}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Monto esperado:</span>
+                      <span className="font-bold tabular-nums">{fmtBase(reg.currentAmt)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Total ventas:</span>
+                      <span className="font-bold tabular-nums">{detail ? fmtBase(detail.totalSales) : `${reg._count.sales} ventas`}</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Cajero:</span>
-                    <span className="font-medium">{reg.user.name}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Monto esperado:</span>
-                    {/* Fix 3: Use fmt() in close dialog */}
-                    <span className="font-bold tabular-nums">{fmtBase(reg.currentAmt)}</span>
-                  </div>
-                </div>
+                  {reg._count.sales > 0 && (
+                    <div className="space-y-3">
+                      {loadingDetail[closeRegId] ? (
+                        <div className="flex items-center justify-center py-6">
+                          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                          <span className="ml-2 text-sm text-muted-foreground">Cargando detalle...</span>
+                        </div>
+                      ) : detail ? (
+                        <>
+                          <div className="rounded-md border p-3 space-y-2">
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Desglose por Metodo de Pago</p>
+                            {detail.methodBreakdown.map(mb => (
+                              <div key={mb.method} className="flex items-center justify-between text-sm">
+                                <div className="flex items-center gap-2">
+                                  {mb.isCredit && <Clock className="h-3.5 w-3.5 text-amber-600" />}
+                                  <span className={mb.isCredit ? 'text-amber-700 dark:text-amber-400 font-medium' : ''}>
+                                    {mb.methodName}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground">({mb.count} venta{mb.count !== 1 ? 's' : ''})</span>
+                                </div>
+                                <span className="font-semibold tabular-nums">{fmtBase(mb.total)}</span>
+                              </div>
+                            ))}
+                          </div>
+                          {detail.creditSales.length > 0 && (
+                            <div className="rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 p-3 space-y-3">
+                              <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">
+                                <Clock className="h-3.5 w-3.5 inline mr-1" />
+                                Ventas a Credito ({detail.creditSales.length})
+                              </p>
+                              {detail.creditSales.map(cs => (
+                                <div key={cs.saleId} className="rounded border border-amber-200 dark:border-amber-800 bg-white dark:bg-muted/50 p-2.5 space-y-1.5">
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <span className="text-sm font-medium">{cs.clientName}</span>
+                                      <span className="text-xs text-muted-foreground ml-2">#{cs.saleNumber}</span>
+                                    </div>
+                                    <span className="text-sm font-bold tabular-nums">{fmtBase(cs.total)}</span>
+                                  </div>
+                                  <div className="text-xs text-muted-foreground space-y-0.5">
+                                    {cs.products.map((p, i) => (
+                                      <p key={i}>{p.name} x{p.quantity} \u2014 {fmtBase(p.lineTotal)}</p>
+                                    ))}
+                                  </div>
+                                  {cs.pendingBalance > 0 && (
+                                    <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+                                      Saldo pendiente: {fmtBase(cs.pendingBalance)}
+                                    </p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <div className="rounded-md border p-3 space-y-2 max-h-48 overflow-y-auto">
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Historial de Ventas</p>
+                            {detail.sales.map(sale => (
+                              <div key={sale.id} className="rounded border p-2 text-xs space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <div className="min-w-0">
+                                    <span className="font-medium">{sale.clientName}</span>
+                                    <span className="text-muted-foreground ml-1.5">#{sale.number}</span>
+                                  </div>
+                                  <span className="font-bold tabular-nums shrink-0">{fmtBase(sale.total)}</span>
+                                </div>
+                                <div className="text-muted-foreground space-y-0.5">
+                                  {sale.products.map((p, i) => (
+                                    <p key={i}>{p.name} x{p.quantity} \u2014 {fmtBase(p.lineTotal)}</p>
+                                  ))}
+                                </div>
+                                <div className="flex flex-wrap gap-1.5 pt-0.5">
+                                  {sale.payments.map((p, i) => (
+                                    <Badge key={i} variant="outline" className="text-[10px] px-1.5 py-0">
+                                      {p.method}: {fmtBase(p.amount)}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      ) : null}
+                    </div>
+                  )}
+                </>
               ) : null
             })()}
             <div className="space-y-2">
               <Label htmlFor="closeamt">Monto Real en Caja *</Label>
-              {/* Fix 2: text inputMode numeric + cash-input */}
-              {/* Fix 15: Use correct register for placeholder */}
               <Input
                 id="closeamt"
                 type="text"
                 inputMode="numeric"
-                className="cash-input [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
+                className="cash-input [&::-webkit-inner-spin-button]:appearance:none [&::-webkit-outer-spin-button]:appearance:none [-moz-appearance:textfield]"
                 value={closeActual}
                 onChange={(e) => setCloseActual(numericFilter(e.target.value))}
                 placeholder={closeRegId ? fmt(registers.find(r => r.id === closeRegId)?.currentAmt || 0) : '0,00'}
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              Se enviará un correo electrónico al administrador con el resumen del cierre.
+              Se enviara un correo electronico al administrador con el resumen del cierre.
             </p>
             <Button className="w-full bg-red-600 hover:bg-red-700 text-white" onClick={closeRegister} disabled={saving}>
               {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Cerrando...</> : 'Confirmar Cierre'}

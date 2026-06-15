@@ -101,7 +101,7 @@ function KpiCard({
 }
 
 export function FinancialDashboard() {
-  const { fmt } = useCurrency()
+  const { fmtBase } = useCurrency()
   const selectedBranchId = useAppStore((s) => s.selectedBranchId)
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -213,27 +213,27 @@ export function FinancialDashboard() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
           title="Ingresos Hoy"
-          value={fmt(data.ingresosHoy)}
+          value={fmtBase(data.ingresosHoy)}
           icon={DollarSign}
           trend="up"
           color="primary"
         />
         <KpiCard
           title="Gastos Hoy"
-          value={fmt(data.gastosHoy)}
+          value={fmtBase(data.gastosHoy)}
           icon={ShoppingCart}
           trend={data.gastosHoy > 0 ? 'down' : 'up'}
           color="red"
         />
         <KpiCard
           title="Utilidad Bruta (Mes)"
-          value={fmt(data.utilidadBrutaMes)}
+          value={fmtBase(data.utilidadBrutaMes)}
           icon={Target}
           color="violet"
         />
         <KpiCard
           title="Utilidad Neta (Mes)"
-          value={fmt(data.utilidadNetaMes)}
+          value={fmtBase(data.utilidadNetaMes)}
           icon={PiggyBank}
           color="amber"
         />
@@ -250,7 +250,7 @@ export function FinancialDashboard() {
         />
         <KpiCard
           title={`Ingresos (${data.chartLabel})`}
-          value={fmt(data.ingresosPeriodo)}
+          value={fmtBase(data.ingresosPeriodo)}
           icon={DollarSign}
           trend="up"
           color="primary"
@@ -289,7 +289,7 @@ export function FinancialDashboard() {
                       borderRadius: '8px',
                       fontSize: '12px',
                     }}
-                    formatter={(value: number) => [fmt(value), 'Ventas']}
+                    formatter={(value: number) => [fmtBase(value), 'Ventas']}
                   />
                   <Area
                     type="monotone"
@@ -324,7 +324,7 @@ export function FinancialDashboard() {
                     <p className="text-xs text-muted-foreground">{product.qty} uds</p>
                   </div>
                   <span className="text-sm font-semibold text-primary dark:text-primary">
-                    {fmt(product.revenue)}
+                    {fmtBase(product.revenue)}
                   </span>
                 </div>
               ))
@@ -361,7 +361,7 @@ export function FinancialDashboard() {
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-bold text-primary dark:text-primary">
-                        {fmt(sale.total)}
+                        {fmtBase(sale.total)}
                       </p>
                       <Badge variant="outline" className="text-[10px]">
                         {sale.status}
@@ -408,7 +408,7 @@ export function FinancialDashboard() {
                     </p>
                     <p className="text-xs">{alert.clientName}</p>
                     <p className="text-[10px] text-muted-foreground">
-                      Pendiente: {fmt(alert.pendingBalance)}
+                      Pendiente: {fmtBase(alert.pendingBalance)}
                     </p>
                   </div>
                 ))}
@@ -422,7 +422,7 @@ export function FinancialDashboard() {
                     </p>
                     <p className="text-xs">{alert.supplierName}</p>
                     <p className="text-[10px] text-muted-foreground">
-                      Pendiente: {fmt(alert.pendingBalance)}
+                      Pendiente: {fmtBase(alert.pendingBalance)}
                     </p>
                   </div>
                 ))}
