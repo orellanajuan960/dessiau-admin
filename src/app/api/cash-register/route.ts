@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { resolveBranchId } from '@/lib/resolve-branch'
 import { logAction } from '@/lib/audit-log'
 import { formatCurrency } from '@/lib/currency'
+import { getPaymentMethodsFromDB, FALLBACK_METHODS } from '@/lib/payment-methods'
 
 export async function GET(request: NextRequest) {
   try {
@@ -19,6 +20,46 @@ export async function GET(request: NextRequest) {
         _count: { select: { sales: true, movements: true } },
       },
     })
+
+    // Recalculate currentAmt for open registers (non-credit payments + movements)
+    const openRegs = registers.filter(r => r.status === 'abierta')
+    if (openRegs.length > 0) {
+      const pmList = await getPaymentMethodsFromDB().catch(() => FALLBACK_METHODS)
+      const creditCodes = new Set(pmList.filter(m => m.isCredit).map(m => m.code))
+
+      for (const reg of openRegs) {
+        const sales = await db.sale.findMany({
+          where: { cashRegId: reg.id, status: 'completada' },
+          include: { payments: true },
+        })
+        const movements = await db.cashMovement.findMany({
+          where: { cashRegId: reg.id },
+        })
+
+        let salesTotal = 0
+        for (const sale of sales) {
+          for (const p of sale.payments) {
+            if (!creditCodes.has(p.method)) salesTotal += p.amount
+          }
+        }
+        const entradas = movements.filter(m => m.type === 'entrada').reduce((s, m) => s + m.amount, 0)
+        const salidas = movements.filter(m => m.type === 'salida').reduce((s, m) => s + m.amount, 0)
+        const retiros = movements.filter(m => m.type === 'retiro_excedente').reduce((s, m) => s + m.amount, 0)
+
+        const correctAmt = Math.round((reg.initialAmt + salesTotal + entradas - salidas - retiros) * 100) / 100
+
+        // Update in-memory for response
+        ;(reg as any).currentAmt = correctAmt
+
+        // Persist if different
+        if (Math.abs(reg.currentAmt - correctAmt) > 0.01) {
+          await db.cashRegister.update({
+            where: { id: reg.id },
+            data: { currentAmt: correctAmt },
+          })
+        }
+      }
+    }
 
     return NextResponse.json(registers)
   } catch (error) {
