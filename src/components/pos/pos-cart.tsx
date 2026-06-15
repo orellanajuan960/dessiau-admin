@@ -70,7 +70,9 @@ export function PosCart({ onPayment }: PosCartProps) {
     }
 
     // Multi-currency: convert each item's lineTotal to reference currency
+    // Also compute local subtotal directly to avoid round-trip precision loss
     let ref = 0
+    let local = 0
     items.forEach((item) => {
       const itemInRef = convertToRefCurrency(
         item.lineTotal,
@@ -82,10 +84,19 @@ export function PosCart({ onPayment }: PosCartProps) {
         usdRate || 0,
       )
       ref += itemInRef
+
+      // For local total: if item is already in local currency, sum directly;
+      // otherwise convert from ref to local (only for non-local items)
+      if (item.currencyCode === localCode || !item.currencyCode) {
+        local += item.lineTotal
+      } else {
+        local += itemInRef * exchangeRate
+      }
     })
     // Round to avoid floating point issues
     ref = Math.round(ref * 100) / 100
-    return { subtotalRef: ref, subtotalLocal: ref * exchangeRate }
+    local = Math.round(local * 100) / 100
+    return { subtotalRef: ref, subtotalLocal: local }
   }, [items, multiEnabled, exchangeRate, referenceCurrency, localCode, eurRate, usdRate, getTotal])
 
   const ivaAmountLocal = ivaEnabled ? Math.round(subtotalLocal * (ivaRate / 100) * 100) / 100 : 0
@@ -180,7 +191,11 @@ export function PosCart({ onPayment }: PosCartProps) {
                     usdRate || 0,
                   )
                 : item.lineTotal
-              const itemInLocal = itemInRef * exchangeRate
+              // For local display: use lineTotal directly if item is in local currency
+              // to avoid round-trip precision loss (local → ref → local)
+              const itemInLocal = (item.currencyCode === localCode || !item.currencyCode)
+                ? item.lineTotal
+                : itemInRef * exchangeRate
               // Show mixed currency indicator when item currency differs from reference
               const isDifferentCurrency = multiEnabled && item.currencyCode && item.currencyCode !== (referenceCurrency || 'USD')
               const atMaxStock = item.quantity >= item.maxStock
