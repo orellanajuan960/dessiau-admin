@@ -810,7 +810,7 @@ export function SettingsView() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {currencies.filter(c => !c.isBase && (c.code === 'USD' || c.code === 'EUR')).map((c) => (
+                      {currencies.filter(c => c.code === 'USD' || c.code === 'EUR').map((c) => (
                         <SelectItem key={c.id} value={c.code}>
                           {c.code} - {c.symbol}
                         </SelectItem>
