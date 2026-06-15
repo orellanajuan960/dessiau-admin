@@ -204,10 +204,18 @@ export const usePosStore = create<PosState>()(
     {
       name: 'jo-admin-cart',
       partialize: (state) => ({
-        items: state.items,
+        items: state.items || [],
         clientId: state.clientId,
         branchId: state.branchId,
-        pausedSales: state.pausedSales,
+        pausedSales: state.pausedSales || [],
+      }),
+      merge: (persisted, current) => ({
+        ...current,
+        ...(persisted as Partial<PosState>),
+        // Ensure pausedSales is always an array even if missing from old storage
+        pausedSales: Array.isArray((persisted as Partial<PosState>)?.pausedSales)
+          ? (persisted as Partial<PosState>).pausedSales!
+          : [],
       }),
     }
   )

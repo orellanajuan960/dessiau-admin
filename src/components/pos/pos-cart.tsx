@@ -43,6 +43,9 @@ export function PosCart({ onPayment }: PosCartProps) {
     pausedSales, setClientId, clientId,
   } = usePosStore()
 
+  // Defensive: ensure pausedSales is always an array (old localStorage may lack it)
+  const safePausedSales = Array.isArray(pausedSales) ? pausedSales : []
+
   const exchangeRate = useSetting('exchangeRate')
   const referenceCurrency = useSetting('referenceCurrency')
   const ivaEnabled = useSetting('ivaEnabled')
@@ -90,7 +93,7 @@ export function PosCart({ onPayment }: PosCartProps) {
 
   const [showPaused, setShowPaused] = useState(false)
   const [qtyEdit, setQtyEdit] = useState<Record<string, string>>({})
-  const hasPaused = pausedSales.length > 0
+  const hasPaused = safePausedSales.length > 0
 
   const handlePause = () => {
     if (items.length === 0) return
@@ -136,7 +139,7 @@ export function PosCart({ onPayment }: PosCartProps) {
               onClick={() => setShowPaused(true)}
             >
               <Pause className="h-3 w-3 mr-1" />
-              {pausedSales.length}
+              {safePausedSales.length}
             </Button>
           )}
           <span className="text-sm text-muted-foreground">{count} items</span>
@@ -346,11 +349,11 @@ export function PosCart({ onPayment }: PosCartProps) {
               Ventas Pausadas
             </DialogTitle>
             <DialogDescription>
-              {pausedSales.length} venta{pausedSales.length !== 1 ? 's' : ''} en espera. Selecciona una para continuar.
+              {safePausedSales.length} venta{safePausedSales.length !== 1 ? 's' : ''} en espera. Selecciona una para continuar.
             </DialogDescription>
           </DialogHeader>
 
-          {pausedSales.length === 0 ? (
+          {safePausedSales.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center py-8 text-center">
               <Package className="h-10 w-10 text-muted-foreground/40 mb-2" />
               <p className="text-sm text-muted-foreground">No hay ventas pausadas</p>
@@ -358,7 +361,7 @@ export function PosCart({ onPayment }: PosCartProps) {
           ) : (
             <div className="flex-1 overflow-y-auto -mx-6 px-6">
               <div className="space-y-2">
-                {pausedSales.map((sale) => (
+                {safePausedSales.map((sale) => (
                   <div
                     key={sale.id}
                     className="flex items-center gap-3 p-3 rounded-lg border hover:border-primary/30 hover:bg-muted/50 transition-colors"
@@ -427,7 +430,7 @@ export function PosCart({ onPayment }: PosCartProps) {
             </div>
           )}
 
-          {pausedSales.length > 0 && (
+          {safePausedSales.length > 0 && (
             <div className="pt-3 border-t">
               <Button
                 variant="outline"

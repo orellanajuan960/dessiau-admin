@@ -177,8 +177,9 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
       api.get<ClientOption[]>('/api/clients'),
       api.get<PaymentMethodItem[]>(`/api/payment-methods?country=${country}`),
     ]).then(([currencies, registers, clients, methods]) => {
-      setCurrencies(currencies)
-      const openReg = registers?.find(r => r.status === 'abierta')
+      setCurrencies(Array.isArray(currencies) ? currencies : [])
+      const safeRegisters = Array.isArray(registers) ? registers : []
+      const openReg = safeRegisters.find(r => r.status === 'abierta')
       if (openReg) setOpenCashRegId(openReg.id)
       if (Array.isArray(clients)) setClients(clients)
       // Use DB methods, or fallback to hardcoded
