@@ -1,0 +1,40 @@
+nombre,sku,precio,costo,stock,stock mínimo,categoría
+Lavanda 33.7 litros,LAV-001,0.01,,,,Productos Limpieza Liquidos
+Lavaplatos 29.5 litros,LVP-001,0.01,,,,Productos Limpieza Liquidos
+Cloro 25.2 litros,CLO-001,0.01,,,,Productos Limpieza Liquidos
+Desengrasante 17.5 litros,DES-001,0.01,,,,Productos Limpieza Liquidos
+Cherry 24.2 litros,CHR-001,0.01,,,,Productos Limpieza Liquidos
+Canela 13.5 litros,CAN-001,0.01,,,,Productos Limpieza Liquidos
+Limón 44 litros,LIM-001,0.01,,,,Productos Limpieza Liquidos
+Citronela 10.4 litros,CIT-001,0.01,,,,Productos Limpieza Liquidos
+Suavizante 27.8 litros,SUA-001,0.01,,,,Productos Limpieza Liquidos
+Jabón multiuso 12 litros,JMU-001,0.01,,,,Productos Limpieza Liquidos
+Ariel 16 litros,ARI-001,0.01,,,,Productos Limpieza Liquidos
+Cera 2 litros,CER-001,0.01,,,,Productos Limpieza Liquidos
+Limpia poceta 8 litros,LPC-001,0.01,,,,Productos Limpieza Liquidos
+Detergente en polvo 12 kg,DEP-001,0.01,,,,Productos Limpieza Solidos
+Palas,PAL-001,0.01,,,,Productos Limpieza Solidos
+Cepillo,CEP-001,0.01,,,,Productos Limpieza Solidos
+Pañitos micro fibra,PMF-001,0.01,,,,Productos Limpieza Solidos
+Pañitos alambre,PAI-001,0.01,,,,Productos Limpieza Solidos
+Esponja amarilla,ESA-001,0.01,,,,Productos Limpieza Solidos
+Esponja matrix,ESM-001,0.01,,,,Productos Limpieza Solidos
+Esponja colores,ESC-001,0.01,,,,Productos Limpieza Solidos
+Cloro granulado,CLG-001,0.01,,,,Productos Limpieza Solidos
+Cleaning brush,CLB-001,0.01,,,,Productos Limpieza Solidos
+Pañitos cocina,PKC-001,0.01,,,,Productos Limpieza Solidos
+Shampoo 100ml,SHM-001,0.01,,,,Productos Aseo Personal
+Jabón Rexona,JRX-001,0.01,,,,Productos Aseo Personal
+Jabón Dove,JDO-001,0.01,,,,Productos Aseo Personal
+Jabón Lux,JLX-001,0.01,,,,Productos Aseo Personal
+Guantes,GUA-001,0.01,,,,Productos Aseo Personal
+Papel de baño,PBH-001,0.01,,,,Productos Aseo Personal
+Bolsas,BOL-001,0.01,,,,Productos Varios
+Incienso,INC-001,0.01,,,,Productos Varios
+Pega mosca,PMS-001,0.01,,,,Productos Varios
+Porta pañitos,PPA-001,0.01,,,,Productos Varios
+Dedales para ollas,DPO-001,0.01,,,,Productos Varios
+Fashion plastic family,FPF-001,0.01,,,,Productos Varios
+Bombillos,BOM-001,0.01,,,,Productos Varios
+Bocadillos,BOC-001,0.01,,,,Productos Comestibles
+Freels,FRE-001,0.01,,,,Productos Comestibles

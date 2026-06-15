@@ -308,7 +308,7 @@ export function CashRegisterView() {
   useEffect(() => {
     const mainBranch = branches.find(b => b.isMain && b.active)
     const targetBranch = selectedBranchId || mainBranch?.id || ''
-    if (targetBranch && targetBranch !== filterBranchId) {
+    if (targetBranch !== filterBranchId) {
       setFilterBranchId(targetBranch)
     }
   }, [selectedBranchId, branches])
@@ -320,9 +320,7 @@ export function CashRegisterView() {
   }, [])
 
   useEffect(() => {
-    if (filterBranchId) {
-      fetchData(filterBranchId)
-    }
+    fetchData(filterBranchId || undefined)
   }, [filterBranchId])
 
   useEffect(() => {
