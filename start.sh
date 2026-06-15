@@ -10,10 +10,8 @@ echo "  DB: PostgreSQL (Neon)"
 echo "  URL: http://localhost:3000"
 echo "=========================================="
 echo ""
-echo "Credenciales de prueba:"
-echo "  Admin:    carlos@sistema.com / admin123"
-echo "  Cajera:   maria@sistema.com / cajera123"
-echo "  Vendedor: jose@sistema.com / vendedor123"
+echo "Credenciales:"
+echo "  Admin: admin@admin.com / admin123"
 echo ""
 
 npx next dev -p 3000
