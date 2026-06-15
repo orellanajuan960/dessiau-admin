@@ -2,7 +2,7 @@
 # JO-Administrativo - Start Script
 # Forces correct DATABASE_URL overriding any stale system env var (old SQLite path)
 
-export DATABASE_URL="postgresql://neondb_owner:npg_ICHtoF39sBOg@ep-flat-salad-apfgfrde-pooler.c-7.us-east-1.aws.neon.tech/neondb?channel_binding=require&sslmode=require"
+export DATABASE_URL="postgresql://neondb_owner:npg_7jqFN8BQUwKS@ep-purple-night-aj20yenk-pooler.c-3.us-east-2.aws.neon.tech/neondb?channel_binding=require&sslmode=require"
 
 echo "=========================================="
 echo "  JO-Administrativo ERP/POS"

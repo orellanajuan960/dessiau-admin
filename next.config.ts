@@ -14,7 +14,7 @@ const nextConfig: NextConfig = {
   env: {
     DATABASE_URL: process.env.DATABASE_URL?.startsWith("postgresql")
       ? process.env.DATABASE_URL
-      : "postgresql://neondb_owner:npg_ICHtoF39sBOg@ep-flat-salad-apfgfrde-pooler.c-7.us-east-1.aws.neon.tech/neondb?channel_binding=require&sslmode=require",
+      : "postgresql://neondb_owner:npg_7jqFN8BQUwKS@ep-purple-night-aj20yenk-pooler.c-3.us-east-2.aws.neon.tech/neondb?channel_binding=require&sslmode=require",
   },
   turbopack: {
     resolveAlias: {
