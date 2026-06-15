@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
+import { getCurrencyForCountry } from '@/lib/country-currency'
 
 const REFERENCE_CURRENCIES = [
   { code: 'USD', name: 'Dólar Estadounidense', symbol: '$' },
@@ -16,6 +17,26 @@ export async function GET() {
         const exists = await db.currency.findUnique({ where: { code: rc.code } })
         if (!exists) {
           await db.currency.create({ data: { ...rc, isBase: false } })
+        }
+      }
+
+      // Auto-create the country's local currency if it doesn't exist
+      const country = settings.country || 'VE'
+      const localInfo = getCurrencyForCountry(country)
+      if (localInfo) {
+        const localExists = await db.currency.findUnique({ where: { code: localInfo.code } })
+        if (!localExists) {
+          // Make the country currency the base currency (local = base)
+          await db.currency.create({
+            data: { code: localInfo.code, name: localInfo.name, symbol: localInfo.symbol, isBase: true },
+          })
+        } else {
+          // Ensure the country currency is marked as base
+          if (!localExists.isBase) {
+            // Demote existing base
+            await db.currency.updateMany({ where: { isBase: true }, data: { isBase: false } })
+            await db.currency.update({ where: { id: localExists.id }, data: { isBase: true } })
+          }
         }
       }
     }

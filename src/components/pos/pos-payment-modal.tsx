@@ -41,6 +41,8 @@ import {
 import { toast } from 'sonner'
 import { useCurrency } from '@/hooks/use-currency'
 import { FALLBACK_METHODS } from '@/lib/payment-methods'
+import { calcCartTotals } from '@/lib/currency-conversion'
+import { getCurrencyForCountry } from '@/lib/country-currency'
 
 interface PosPaymentModalProps {
   onClose: () => void
@@ -84,6 +86,9 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   const exchangeRate = useSetting('exchangeRate')
   const baseCurrencyId = useSetting('baseCurrencyId')
   const country = useSetting('country') || 'VE'
+  const referenceCurrency = useSetting('referenceCurrency') || 'USD'
+  const eurRate = useSetting('eurRate') || 0
+  const usdRate = useSetting('usdRate') || 0
   const [method, setMethod] = useState('')
   const [amount, setAmount] = useState('')
   const [reference, setReference] = useState('')
@@ -102,12 +107,28 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   const [newClientEmail, setNewClientEmail] = useState('')
   const [creatingClient, setCreatingClient] = useState(false)
 
-  const subtotal = getTotal()
   const ivaEnabled = useSetting('ivaEnabled')
   const ivaRate = Number(useSetting('ivaRate')) || 0
-  const ivaAmount = ivaEnabled ? Math.round(subtotal * (ivaRate / 100) * 100) / 100 : 0
-  const total = Math.round((subtotal + ivaAmount) * 100) / 100
-  const totalBs = total * exchangeRate
+  const localInfo = getCurrencyForCountry(country)
+  const localCode = localInfo?.code || ''
+
+  // Calculate cart totals with per-item currency conversion
+  const { subtotalRef, subtotalLocal } = useMemo(() => {
+    return calcCartTotals(items, {
+      multiEnabled: useSetting('multiCurrencyEnabled') as boolean,
+      exchangeRate: exchangeRate as number,
+      referenceCurrency: referenceCurrency,
+      localCode,
+      eurRate,
+      usdRate,
+    })
+  }, [items, exchangeRate, referenceCurrency, localCode, eurRate, usdRate])
+
+  const subtotal = subtotalRef
+  const ivaAmountLocal = ivaEnabled ? Math.round(subtotalLocal * (ivaRate / 100) * 100) / 100 : 0
+  const totalLocal = Math.round((subtotalLocal + ivaAmountLocal) * 100) / 100
+  // Total in reference currency = (subtotal local + iva local) / exchangeRate
+  const total = exchangeRate > 0 ? Math.round((totalLocal / exchangeRate) * 100) / 100 : subtotal
   const { sym: currencySymbol, baseSym, refCode, fmt, fmtBase, multiEnabled } = useCurrency()
 
   // Only enabled methods
@@ -142,11 +163,11 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   // When method changes, set default amount in the correct currency
   useEffect(() => {
     if (isLocalMethod) {
-      setAmount(totalBs.toFixed(2))
+      setAmount(totalLocal.toFixed(2))
     } else {
       setAmount(total.toFixed(2))
     }
-  }, [method, isLocalMethod, totalBs, total])
+  }, [method, isLocalMethod, totalLocal, total])
 
   // Load currencies, open cash register, clients, and payment methods on mount
   useEffect(() => {
@@ -284,13 +305,13 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   const changeAmount = useMemo(() => {
     const parsed = parseFloat(amount) || 0
     if (selectedMethod?.isCash) {
-      const limit = isLocalMethod ? totalBs : total
+      const limit = isLocalMethod ? totalLocal : total
       if (parsed > limit) {
         return parsed - limit
       }
     }
     return 0
-  }, [amount, method, isLocalMethod, totalBs, total, selectedMethod])
+  }, [amount, method, isLocalMethod, totalLocal, total, selectedMethod])
 
   const amountLabel = isLocalMethod ? `Monto (${baseSym})` : 'Monto'
   const changeLabel = isLocalMethod ? baseSym : currencySymbol
@@ -302,7 +323,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
           <DialogTitle>Cobrar</DialogTitle>
           <DialogDescription>
             Total: {currencySymbol}{total.toFixed(2)}
-            {multiEnabled && <span className="ml-2">· {baseSym} {totalBs.toFixed(2)}</span>}
+            {multiEnabled && <span className="ml-2">· {baseSym} {totalLocal.toFixed(2)}</span>}
           </DialogDescription>
         </DialogHeader>
 

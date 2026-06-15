@@ -47,6 +47,8 @@ import { ProductImportDialog } from './product-import-dialog'
 import { BarcodeLabelSelector } from './barcode-label-selector'
 import { useAuth } from '@/hooks/use-auth'
 import { useCurrency } from '@/hooks/use-currency'
+import { useSetting } from '@/stores/use-app-store'
+import { getCurrencyForCountry } from '@/lib/country-currency'
 
 // ── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -101,7 +103,9 @@ function fmtStock(n: number): string {
 export function ProductsTable() {
   const { permissions } = useAuth()
   const canManage = permissions.canManageProducts
-  const { multiEnabled, refCode, sym: currencySym, fmt: fmtCurrency } = useCurrency()
+  const { multiEnabled, refCode, sym: currencySym, fmt: fmtCurrency, baseCode } = useCurrency()
+  const country = useSetting('country') || 'VE'
+  const localCurrencyInfo = getCurrencyForCountry(country)
   const selectedBranchId = useAppStore((s) => s.selectedBranchId)
   const branches = useAppStore((s) => s.branches)
   const [products, setProducts] = useState<Product[]>([])
@@ -893,11 +897,17 @@ export function ProductsTable() {
                     <SelectValue placeholder="Seleccionar" />
                   </SelectTrigger>
                   <SelectContent>
-                    {currencies.filter(c => c.code === 'USD' || c.code === 'EUR').map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.code} ({c.symbol})
-                      </SelectItem>
-                    ))}
+                    {(() => {
+                      const allowedCodes = ['USD', 'EUR']
+                      if (localCurrencyInfo && !allowedCodes.includes(localCurrencyInfo.code)) {
+                        allowedCodes.push(localCurrencyInfo.code)
+                      }
+                      return currencies.filter(c => allowedCodes.includes(c.code)).map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.code} ({c.symbol})
+                        </SelectItem>
+                      ))
+                    })()}
                   </SelectContent>
                 </Select>
               </div>

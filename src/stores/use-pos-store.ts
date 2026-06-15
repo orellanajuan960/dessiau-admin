@@ -8,6 +8,8 @@ export interface CartItem {
   unitPrice: number
   unitCost: number
   currencySymbol: string
+  currencyCode?: string
+  currencyId?: string
   lineTotal: number
   maxStock: number
   displayUnit?: string // e.g. 'kg', 'L', '' for unit

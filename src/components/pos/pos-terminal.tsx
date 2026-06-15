@@ -26,10 +26,11 @@ interface ProductWithInventory {
   price: number
   costAvg: number
   currencyId: string
+  currencyCode: string
   categoryId: string | null
   imageUrl: string
   active: boolean
-  currency: { symbol: string }
+  currency: { symbol: string; code: string }
   category: { name: string; unitType: string } | null
   inventories: { stock: number; branchId: string; price: number; branch?: { id: string; name: string } }[]
 }
@@ -272,6 +273,8 @@ export function PosTerminal() {
       unitPrice: effectivePrice,
       unitCost: product.costAvg,
       currencySymbol: product.currency.symbol,
+      currencyCode: product.currencyCode || product.currency.code || '',
+      currencyId: product.currencyId,
       maxStock: stock,
     })
 
@@ -301,6 +304,8 @@ export function PosTerminal() {
       unitPrice: effectivePrice,
       unitCost: product.costAvg,
       currencySymbol: product.currency.symbol,
+      currencyCode: product.currencyCode || product.currency.code || '',
+      currencyId: product.currencyId,
       maxStock: stock,
     })
 
@@ -519,7 +524,7 @@ export function PosTerminal() {
                         </p>
                       </div>
                       <span className="text-sm font-bold text-primary shrink-0">
-                        {currencySymbol}{effectivePrice.toFixed(2)}
+                        {product.currency.symbol}{effectivePrice.toFixed(2)}
                       </span>
                     </button>
                   )
@@ -655,7 +660,7 @@ export function PosTerminal() {
                   <div className="mt-auto flex items-center justify-between w-full">
                     <div>
                       <span className="text-sm font-bold text-primary dark:text-primary">
-                        {currencySymbol}{effectivePrice.toFixed(2)}
+                        {product.currency.symbol}{effectivePrice.toFixed(2)}
                       </span>
                       {currentQty > 0 && (
                         <p className="text-[10px] text-primary font-medium">En carrito: {currentQty}</p>
@@ -829,9 +834,9 @@ export function PosTerminal() {
                 {parsed > 0 && (
                   <div className="rounded-md bg-muted/50 p-3 text-center">
                     <p className="text-xs text-muted-foreground">Subtotal</p>
-                    <p className="text-lg font-bold">{currencySymbol}{calcPrice.toFixed(2)}</p>
+                    <p className="text-lg font-bold">{unitProduct.currency.symbol}{calcPrice.toFixed(2)}</p>
                     <p className="text-xs text-muted-foreground">
-                      {effectivePrice.toFixed(2)} {currencySymbol}/{unitLabel} x {parsed} {unitLabel}
+                      {effectivePrice.toFixed(2)} {unitProduct.currency.symbol}/{unitLabel} x {parsed} {unitLabel}
                     </p>
                   </div>
                 )}
@@ -858,6 +863,8 @@ export function PosTerminal() {
                       unitPrice: effectivePrice,
                       unitCost: unitProduct.costAvg,
                       currencySymbol: unitProduct.currency.symbol,
+                      currencyCode: unitProduct.currencyCode || unitProduct.currency.code || '',
+                      currencyId: unitProduct.currencyId,
                       maxStock: stock,
                       displayUnit: unitLabel,
                     })

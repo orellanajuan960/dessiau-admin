@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { usePosStore, type PausedSale } from '@/stores/use-pos-store'
 import { useSetting, useAppStore } from '@/stores/use-app-store'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -19,6 +19,8 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useCurrency } from '@/hooks/use-currency'
+import { getCurrencyForCountry } from '@/lib/country-currency'
+import { convertToRefCurrency, calcCartTotals } from '@/lib/currency-conversion'
 
 interface PosCartProps {
   onPayment: () => void
@@ -40,17 +42,51 @@ export function PosCart({ onPayment }: PosCartProps) {
     pauseSale, resumeSale, deletePausedSale,
     pausedSales, setClientId, clientId,
   } = usePosStore()
-  const total = getTotal()
-  const count = getItemCount()
+
   const exchangeRate = useSetting('exchangeRate')
   const referenceCurrency = useSetting('referenceCurrency')
   const ivaEnabled = useSetting('ivaEnabled')
   const ivaRate = useSetting('ivaRate')
-  const subtotalBs = total * exchangeRate
-  const ivaAmountBs = ivaEnabled ? subtotalBs * (ivaRate / 100) : 0
-  const totalBs = subtotalBs + ivaAmountBs
-  const totalWithIvaUsd = exchangeRate > 0 ? totalBs / exchangeRate : total
-  const { sym: currencySymbol, baseSym, fmt, fmtBase, multiEnabled } = useCurrency()
+  const country = useSetting('country') || 'VE'
+  const eurRate = useSetting('eurRate')
+  const usdRate = useSetting('usdRate')
+
+  const localInfo = getCurrencyForCountry(country)
+  const localCode = localInfo?.code || ''
+
+  const { sym: refSym, baseSym, fmt, fmtBase, multiEnabled, refCode } = useCurrency()
+
+  const count = getItemCount()
+
+  // Convert each item to reference currency and compute totals
+  const { subtotalRef, subtotalLocal } = useMemo(() => {
+    if (!multiEnabled || exchangeRate <= 0) {
+      // Single currency mode — sum raw values
+      const rawTotal = getTotal()
+      return { subtotalRef: rawTotal, subtotalLocal: rawTotal }
+    }
+
+    // Multi-currency: convert each item's lineTotal to reference currency
+    let ref = 0
+    items.forEach((item) => {
+      const itemInRef = convertToRefCurrency(
+        item.lineTotal,
+        item.currencyCode,
+        referenceCurrency || 'USD',
+        localCode,
+        exchangeRate,
+        eurRate || 0,
+        usdRate || 0,
+      )
+      ref += itemInRef
+    })
+    // Round to avoid floating point issues
+    ref = Math.round(ref * 100) / 100
+    return { subtotalRef: ref, subtotalLocal: ref * exchangeRate }
+  }, [items, multiEnabled, exchangeRate, referenceCurrency, localCode, eurRate, usdRate, getTotal])
+
+  const ivaAmountLocal = ivaEnabled ? Math.round(subtotalLocal * (ivaRate / 100) * 100) / 100 : 0
+  const totalLocal = Math.round((subtotalLocal + ivaAmountLocal) * 100) / 100
 
   const [showPaused, setShowPaused] = useState(false)
   const [qtyEdit, setQtyEdit] = useState<Record<string, string>>({})
@@ -129,7 +165,21 @@ export function PosCart({ onPayment }: PosCartProps) {
         ) : (
           <div className="space-y-2">
             {items.map((item) => {
-              const itemTotalBs = item.lineTotal * exchangeRate
+              // Convert this item's lineTotal to reference currency for display
+              const itemInRef = multiEnabled
+                ? convertToRefCurrency(
+                    item.lineTotal,
+                    item.currencyCode,
+                    referenceCurrency || 'USD',
+                    localCode,
+                    exchangeRate,
+                    eurRate || 0,
+                    usdRate || 0,
+                  )
+                : item.lineTotal
+              const itemInLocal = itemInRef * exchangeRate
+              // Show mixed currency indicator when item currency differs from reference
+              const isDifferentCurrency = multiEnabled && item.currencyCode && item.currencyCode !== (referenceCurrency || 'USD')
               const atMaxStock = item.quantity >= item.maxStock
               return (
                 <div key={item.productId} className="rounded-md border p-2">
@@ -137,7 +187,12 @@ export function PosCart({ onPayment }: PosCartProps) {
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium leading-tight truncate">{item.productName}</p>
                       <p className="text-xs text-muted-foreground">
-                        {currencySymbol}{item.unitPrice.toFixed(2)}{item.displayUnit ? ` /${item.displayUnit}` : ' c/u'}
+                        {item.currencySymbol}{item.unitPrice.toFixed(2)}{item.displayUnit ? ` /${item.displayUnit}` : ' c/u'}
+                        {isDifferentCurrency && (
+                          <span className="ml-1 text-[10px] text-amber-600 font-medium">
+                            ({item.currencyCode})
+                          </span>
+                        )}
                       </p>
                       {atMaxStock && (
                         <p className="text-[10px] text-amber-600 font-medium mt-0.5">
@@ -190,13 +245,19 @@ export function PosCart({ onPayment }: PosCartProps) {
                       </Button>
                     </div>
                     <div className="text-right">
-                      <span className="text-sm font-bold text-primary dark:text-primary">
-                        {currencySymbol}{item.lineTotal.toFixed(2)}
-                      </span>
-                      {multiEnabled && (
-                        <p className="text-[10px] text-muted-foreground">
-                          {baseSym} {itemTotalBs.toFixed(2)}
-                        </p>
+                      {multiEnabled ? (
+                        <>
+                          <span className="text-sm font-bold text-primary dark:text-primary">
+                            {refSym}{itemInRef.toFixed(2)}
+                          </span>
+                          <p className="text-[10px] text-muted-foreground">
+                            {baseSym} {itemInLocal.toFixed(2)}
+                          </p>
+                        </>
+                      ) : (
+                        <span className="text-sm font-bold text-primary dark:text-primary">
+                          {item.currencySymbol}{item.lineTotal.toFixed(2)}
+                        </span>
                       )}
                     </div>
                   </div>
@@ -213,9 +274,9 @@ export function PosCart({ onPayment }: PosCartProps) {
           {multiEnabled && (
             <>
               <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Subtotal ({referenceCurrency})</span>
+                <span className="text-xs text-muted-foreground">Subtotal ({referenceCurrency || 'USD'})</span>
                 <span className="text-sm font-medium">
-                  {currencySymbol}{total.toFixed(2)}
+                  {refSym}{subtotalRef.toFixed(2)}
                 </span>
               </div>
               {ivaEnabled && (
@@ -223,13 +284,13 @@ export function PosCart({ onPayment }: PosCartProps) {
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-muted-foreground">{`Subtotal (${baseSym})`}</span>
                     <span className="text-sm font-medium">
-                      {baseSym} {subtotalBs.toFixed(2)}
+                      {baseSym} {subtotalLocal.toFixed(2)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-muted-foreground">I.V.A. ({(ivaRate ?? 0).toFixed(2)}%)</span>
                     <span className="text-sm font-medium text-blue-600">
-                      +{baseSym} {ivaAmountBs.toFixed(2)}
+                      +{baseSym} {ivaAmountLocal.toFixed(2)}
                     </span>
                   </div>
                 </>
@@ -242,7 +303,7 @@ export function PosCart({ onPayment }: PosCartProps) {
                 Total {ivaEnabled ? '(con I.V.A.)' : `(${baseSym})`}
               </span>
               <span className="text-2xl font-bold text-primary dark:text-primary">
-                {baseSym} {totalBs.toFixed(2)}
+                {baseSym} {totalLocal.toFixed(2)}
               </span>
             </div>
           )}
@@ -265,7 +326,7 @@ export function PosCart({ onPayment }: PosCartProps) {
             onClick={onPayment}
             data-tutorial="pos-pay"
           >
-            Cobrar {multiEnabled ? `${baseSym} ${totalBs.toFixed(2)}` : `${fmt(total)}`}
+            Cobrar {multiEnabled ? `${baseSym} ${totalLocal.toFixed(2)}` : `${fmt(getTotal())}`}
           </Button>
         </div>
       </div>
@@ -335,7 +396,7 @@ export function PosCart({ onPayment }: PosCartProps) {
                     {/* Amount */}
                     <div className="text-right shrink-0">
                       <p className="text-sm font-bold text-primary">
-                        {currencySymbol}{sale.total.toFixed(2)}
+                        {refSym}{sale.total.toFixed(2)}
                       </p>
                     </div>
 
@@ -357,7 +418,7 @@ export function PosCart({ onPayment }: PosCartProps) {
                         onClick={() => handleDelete(sale.id)}
                         title="Eliminar"
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <Trash2 className="h-3 w-3" />
                       </Button>
                     </div>
                   </div>
@@ -378,7 +439,7 @@ export function PosCart({ onPayment }: PosCartProps) {
                   toast.success('Todas las ventas pausadas fueron eliminadas')
                 }}
               >
-                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                <Trash2 className="mr-1.5 h-3 w-3" />
                 Eliminar todas
               </Button>
             </div>
