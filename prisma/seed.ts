@@ -3,9 +3,9 @@ import { PrismaClient } from "@prisma/client";
 const db = new PrismaClient();
 
 async function main() {
-  console.log("🌱 Seeding database...\n");
+  console.log("🌱 Seeding esencial...\n");
 
-  // Moneda base (requerida por el sistema)
+  // 1. Moneda base
   await db.currency.upsert({
     where: { code: "USD" },
     update: {},
@@ -17,7 +17,7 @@ async function main() {
     },
   });
 
-  // Sucursal principal (requerida para caja, ventas, etc.)
+  // 2. Sucursal principal
   const branch = await db.branch.upsert({
     where: { code: "SUC-001" },
     update: {},
@@ -29,8 +29,8 @@ async function main() {
     },
   });
 
-  // Admin
-  const admin = await db.user.upsert({
+  // 3. Admin
+  await db.user.upsert({
     where: { email: "admin@admin.com" },
     update: {},
     create: {
@@ -43,9 +43,9 @@ async function main() {
     },
   });
 
-  console.log(`✅ Moneda base: USD ($)`);
-  console.log(`✅ Sucursal: ${branch.name} (${branch.id})`);
-  console.log(`✅ Admin creado: ${admin.name} (${admin.email})`);
+  console.log("✅ Moneda base: USD ($)");
+  console.log(`✅ Sucursal: ${branch.name}`);
+  console.log("✅ Admin: admin@admin.com / admin123");
 }
 
 main()
