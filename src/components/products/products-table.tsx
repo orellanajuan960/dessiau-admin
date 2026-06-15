@@ -696,7 +696,7 @@ export function ProductsTable() {
                 : 'Completa los datos para crear un nuevo producto'}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 overflow-y-auto max-h-[70vh] pr-1">
+          <div className="space-y-4">
             {/* Active toggle (only for edit) */}
             {editProduct && (
               <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
@@ -808,8 +808,8 @@ export function ProductsTable() {
               <div className="space-y-2">
                 <Label htmlFor="pcat">Categoría</Label>
                 <Select value={formCategory} onValueChange={setFormCategory}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sin categoría" />
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Sin categoría" className="truncate" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">Sin categoría</SelectItem>
