@@ -16,11 +16,17 @@ export async function resolveBranchId(request?: NextRequest): Promise<string> {
 
   // Fall back to first active branch from DB
   try {
-    const branch = await db.branch.findFirst({
+    let branch = await db.branch.findFirst({
       where: { active: true },
       orderBy: { isMain: 'desc' },
     })
-    if (branch) return branch.id
+    if (!branch) {
+      // Auto-create default branch if none exists
+      branch = await db.branch.create({
+        data: { name: 'Sucursal Principal', code: 'SUC-001', isMain: true, active: true },
+      })
+    }
+    return branch.id
   } catch {
     // DB might not be ready yet
   }

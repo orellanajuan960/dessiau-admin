@@ -17,6 +17,18 @@ async function main() {
     },
   });
 
+  // Sucursal principal (requerida para caja, ventas, etc.)
+  const branch = await db.branch.upsert({
+    where: { code: "SUC-001" },
+    update: {},
+    create: {
+      name: "Sucursal Principal",
+      code: "SUC-001",
+      isMain: true,
+      active: true,
+    },
+  });
+
   // Admin
   const admin = await db.user.upsert({
     where: { email: "admin@admin.com" },
@@ -27,10 +39,12 @@ async function main() {
       password: "admin123",
       role: "admin",
       active: true,
+      branchId: branch.id,
     },
   });
 
-  console.log(`✅ Moneda base: USD ($)`),
+  console.log(`✅ Moneda base: USD ($)`);
+  console.log(`✅ Sucursal: ${branch.name} (${branch.id})`);
   console.log(`✅ Admin creado: ${admin.name} (${admin.email})`);
 }
 
