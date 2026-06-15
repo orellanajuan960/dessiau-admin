@@ -63,86 +63,88 @@ export async function GET(
     })
 
     // ---------------------------------------------------------------
-    // 1) Build methodBreakdown – aggregate by payment method
+    // 1) Build methodBreakdown – aggregate by (method, currency)
     // ---------------------------------------------------------------
     const methodMap = new Map<
-      string,
-      { methodName: string; isCredit: boolean; count: Set<string>; total: number }
+      string, // key = "method|currencyCode"
+      { method: string; methodName: string; isCredit: boolean; currencyCode: string; count: Set<string>; total: number }
     >()
 
     for (const sale of sales) {
-      // Track which methods were used in this sale to count unique sales per method
-      const methodsInSale = new Set<string>()
-
       for (const payment of sale.payments) {
-        methodsInSale.add(payment.method)
-
         const def = getMethodDef(payment.method)
         const methodName = def?.name ?? payment.method
         const isCredit = def?.isCredit ?? false
+        const currencyCode = payment.currency?.code ?? ''
 
-        if (!methodMap.has(payment.method)) {
-          methodMap.set(payment.method, {
+        const key = `${payment.method}|${currencyCode}`
+        if (!methodMap.has(key)) {
+          methodMap.set(key, {
+            method: payment.method,
             methodName,
             isCredit,
+            currencyCode,
             count: new Set<string>(),
             total: 0,
           })
         }
 
-        const entry = methodMap.get(payment.method)!
+        const entry = methodMap.get(key)!
         entry.count.add(sale.id)
         entry.total += payment.amount
       }
-
-      // Edge-case: a sale with zero payments still counts once for its
-      // implicit method. We skip this because a completed sale should
-      // always have at least one payment.
     }
 
     const methodBreakdown = Array.from(methodMap.entries()).map(
-      ([method, data]) => ({
-        method,
+      ([, data]) => ({
+        method: data.method,
         methodName: data.methodName,
         isCredit: data.isCredit,
+        currencyCode: data.currencyCode,
         count: data.count.size,
         total: roundTwo(data.total),
       })
     )
 
     // ---------------------------------------------------------------
-    // 2) Build creditSales detail
+    // 2) Build creditSales detail – with actual credit amount & currency
     // ---------------------------------------------------------------
     const creditSales: Array<{
       saleId: string
       saleDate: string
       saleNumber: string
       clientName: string
-      total: number
+      saleTotal: number
+      creditAmount: number
       pendingBalance: number
+      currencyCode: string
       products: Array<{ name: string; quantity: number; lineTotal: number }>
     }> = []
 
-    // Collect IDs of credit sales so we can batch-fetch receivables
     const creditSaleIds: string[] = []
 
     for (const sale of sales) {
-      const hasCredit = sale.payments.some((p) => {
+      const creditPayments = sale.payments.filter((p) => {
         const def = getMethodDef(p.method)
         return def?.isCredit ?? false
       })
 
-      if (!hasCredit) continue
+      if (creditPayments.length === 0) continue
 
       creditSaleIds.push(sale.id)
+
+      const creditAmount = roundTwo(creditPayments.reduce((s, p) => s + p.amount, 0))
+      const currencyCode = creditPayments[0]?.currency?.code ?? ''
 
       creditSales.push({
         saleId: sale.id,
         saleDate: sale.date.toISOString(),
         saleNumber: sale.number ?? '',
         clientName: sale.client?.name ?? 'Consumidor final',
-        total: roundTwo(sale.total),
-        pendingBalance: roundTwo(sale.total), // default; updated below
+        saleTotal: roundTwo(sale.total),
+        creditAmount,
+        pendingBalance: creditAmount, // default; updated below
+        currencyCode,
         products: sale.lines.map((l) => ({
           name: l.product?.name ?? 'Producto eliminado',
           quantity: l.quantity,
@@ -199,7 +201,7 @@ export async function GET(
     }))
 
     // ---------------------------------------------------------------
-    // 4) Compute totals
+    // 4) Compute totals (all non-credit)
     // ---------------------------------------------------------------
     let totalSales = 0
     let totalCash = 0

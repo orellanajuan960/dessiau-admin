@@ -239,7 +239,7 @@ export function CashRegisterView() {
   const { user, permissions } = useAuth()
   const { branches, selectedBranchId, setSelectedBranchId } = useAppStore()
   const canManageCash = permissions.canManageCash
-  const { fmtBase } = useCurrency()
+  const { fmtBase, fmtWith } = useCurrency()
   const country = useSetting('country')
 
   const denominations = useMemo(() => getDenominations(country || 'VE'), [country])
@@ -276,8 +276,8 @@ export function CashRegisterView() {
 
   // Sales detail for registers
   const [salesDetail, setSalesDetail] = useState<Record<string, {
-    methodBreakdown: Array<{ method: string; methodName: string; isCredit: boolean; count: number; total: number }>
-    creditSales: Array<{ saleId: string; saleDate: string; saleNumber: string; clientName: string; total: number; pendingBalance: number; products: Array<{ name: string; quantity: number; lineTotal: number }> }>
+    methodBreakdown: Array<{ method: string; methodName: string; isCredit: boolean; currencyCode: string; count: number; total: number }>
+    creditSales: Array<{ saleId: string; saleDate: string; saleNumber: string; clientName: string; saleTotal: number; creditAmount: number; pendingBalance: number; currencyCode: string; products: Array<{ name: string; quantity: number; lineTotal: number }> }>
     sales: Array<{ id: string; date: string; number: string; total: number; status: string; clientName: string; userName: string; payments: Array<{ method: string; amount: number; currencyCode: string }>; products: Array<{ name: string; quantity: number; lineTotal: number }> }>
     totalSales: number; totalCash: number; totalCredit: number; totalOther: number
   }>>({})
@@ -817,17 +817,17 @@ export function CashRegisterView() {
                           Ver desglose de ventas
                         </button>
                         {expandedRegDetail === reg.id && (
-                          <div className="rounded-md border bg-muted/30 p-2.5 space-y-2 max-h-60 overflow-y-auto">
+                          <div className="rounded-md border bg-muted/30 p-2.5 space-y-2 max-h-80 overflow-y-auto">
                             {loadingDetail[reg.id] ? (
                               <div className="flex items-center justify-center py-4">
                                 <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                               </div>
                             ) : salesDetail[reg.id] ? (
                               <>
-                                {/* Method breakdown */}
+                                {/* Method breakdown by currency */}
                                 <div className="space-y-1.5">
                                   {salesDetail[reg.id].methodBreakdown.map(mb => (
-                                    <div key={mb.method} className="flex items-center justify-between text-xs">
+                                    <div key={`${mb.method}-${mb.currencyCode}`} className="flex items-center justify-between text-xs">
                                       <div className="flex items-center gap-1.5">
                                         {mb.isCredit && <Clock className="h-3 w-3 text-amber-600" />}
                                         <span className={mb.isCredit ? 'text-amber-700 dark:text-amber-400 font-medium' : 'text-muted-foreground'}>
@@ -835,7 +835,7 @@ export function CashRegisterView() {
                                         </span>
                                         <span className="text-muted-foreground">({mb.count})</span>
                                       </div>
-                                      <span className="font-semibold tabular-nums">{fmtBase(mb.total)}</span>
+                                      <span className="font-semibold tabular-nums">{fmtWith(mb.total, mb.currencyCode || undefined)}</span>
                                     </div>
                                   ))}
                                 </div>
@@ -845,21 +845,24 @@ export function CashRegisterView() {
                                     <Separator />
                                     <div className="space-y-2">
                                       <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">
-                                        Ventas a Crédito
+                                        Ventas a Credito
                                       </p>
                                       {salesDetail[reg.id].creditSales.map(cs => (
                                         <div key={cs.saleId} className="rounded border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 p-2 space-y-1">
                                           <div className="flex items-center justify-between">
-                                            <span className="text-xs font-medium">{cs.clientName}</span>
-                                            <span className="text-xs font-bold tabular-nums">{fmtBase(cs.total)}</span>
+                                            <div className="min-w-0">
+                                              <span className="text-xs font-medium">{cs.clientName}</span>
+                                              <span className="text-xs text-muted-foreground ml-1">#{cs.saleNumber}</span>
+                                            </div>
+                                            <span className="text-xs font-bold tabular-nums shrink-0">{fmtWith(cs.creditAmount, cs.currencyCode || undefined)}</span>
                                           </div>
                                           <div className="text-[11px] text-muted-foreground space-y-0.5">
                                             {cs.products.map((p, i) => (
-                                              <p key={i}>{p.name} x{p.quantity} — {fmtBase(p.lineTotal)}</p>
+                                              <p key={i}>{p.name} x{p.quantity} — {fmtWith(p.lineTotal, cs.currencyCode || undefined)}</p>
                                             ))}
                                             {cs.pendingBalance > 0 && (
                                               <p className="text-amber-600 dark:text-amber-400 font-medium">
-                                                Saldo pendiente: {fmtBase(cs.pendingBalance)}
+                                                Saldo pendiente: {fmtWith(cs.pendingBalance, cs.currencyCode || undefined)}
                                               </p>
                                             )}
                                           </div>
@@ -868,6 +871,34 @@ export function CashRegisterView() {
                                     </div>
                                   </>
                                 )}
+                                {/* Full sales history with payment badges */}
+                                <Separator />
+                                <div className="space-y-2">
+                                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Historial de Ventas</p>
+                                  {salesDetail[reg.id].sales.map(sale => (
+                                    <div key={sale.id} className="rounded border p-2 text-xs space-y-1">
+                                      <div className="flex items-center justify-between">
+                                        <div className="min-w-0">
+                                          <span className="font-medium">{sale.clientName}</span>
+                                          <span className="text-muted-foreground ml-1.5">#{sale.number}</span>
+                                        </div>
+                                        <span className="font-bold tabular-nums shrink-0">{fmtWith(sale.total, sale.payments[0]?.currencyCode || undefined)}</span>
+                                      </div>
+                                      <div className="text-muted-foreground space-y-0.5">
+                                        {sale.products.map((p, i) => (
+                                          <p key={i}>{p.name} x{p.quantity} — {fmtWith(p.lineTotal, sale.payments[0]?.currencyCode || undefined)}</p>
+                                        ))}
+                                      </div>
+                                      <div className="flex flex-wrap gap-1.5 pt-0.5">
+                                        {sale.payments.map((p, i) => (
+                                          <Badge key={i} variant="outline" className="text-[10px] px-1.5 py-0">
+                                            {p.method}: {fmtWith(p.amount, p.currencyCode || undefined)}
+                                          </Badge>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
                               </>
                             ) : null}
                           </div>
@@ -1356,7 +1387,7 @@ export function CashRegisterView() {
                           <div className="rounded-md border p-3 space-y-2">
                             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Desglose por Metodo de Pago</p>
                             {detail.methodBreakdown.map(mb => (
-                              <div key={mb.method} className="flex items-center justify-between text-sm">
+                              <div key={`${mb.method}-${mb.currencyCode}`} className="flex items-center justify-between text-sm">
                                 <div className="flex items-center gap-2">
                                   {mb.isCredit && <Clock className="h-3.5 w-3.5 text-amber-600" />}
                                   <span className={mb.isCredit ? 'text-amber-700 dark:text-amber-400 font-medium' : ''}>
@@ -1364,7 +1395,7 @@ export function CashRegisterView() {
                                   </span>
                                   <span className="text-xs text-muted-foreground">({mb.count} venta{mb.count !== 1 ? 's' : ''})</span>
                                 </div>
-                                <span className="font-semibold tabular-nums">{fmtBase(mb.total)}</span>
+                                <span className="font-semibold tabular-nums">{fmtWith(mb.total, mb.currencyCode || undefined)}</span>
                               </div>
                             ))}
                           </div>
@@ -1381,16 +1412,16 @@ export function CashRegisterView() {
                                       <span className="text-sm font-medium">{cs.clientName}</span>
                                       <span className="text-xs text-muted-foreground ml-2">#{cs.saleNumber}</span>
                                     </div>
-                                    <span className="text-sm font-bold tabular-nums">{fmtBase(cs.total)}</span>
+                                    <span className="text-sm font-bold tabular-nums">{fmtWith(cs.creditAmount, cs.currencyCode || undefined)}</span>
                                   </div>
                                   <div className="text-xs text-muted-foreground space-y-0.5">
                                     {cs.products.map((p, i) => (
-                                      <p key={i}>{p.name} x{p.quantity} \u2014 {fmtBase(p.lineTotal)}</p>
+                                      <p key={i}>{p.name} x{p.quantity} \u2014 {fmtWith(p.lineTotal, cs.currencyCode || undefined)}</p>
                                     ))}
                                   </div>
                                   {cs.pendingBalance > 0 && (
                                     <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">
-                                      Saldo pendiente: {fmtBase(cs.pendingBalance)}
+                                      Saldo pendiente: {fmtWith(cs.pendingBalance, cs.currencyCode || undefined)}
                                     </p>
                                   )}
                                 </div>
@@ -1406,17 +1437,17 @@ export function CashRegisterView() {
                                     <span className="font-medium">{sale.clientName}</span>
                                     <span className="text-muted-foreground ml-1.5">#{sale.number}</span>
                                   </div>
-                                  <span className="font-bold tabular-nums shrink-0">{fmtBase(sale.total)}</span>
+                                  <span className="font-bold tabular-nums shrink-0">{fmtWith(sale.total, sale.payments[0]?.currencyCode || undefined)}</span>
                                 </div>
                                 <div className="text-muted-foreground space-y-0.5">
                                   {sale.products.map((p, i) => (
-                                    <p key={i}>{p.name} x{p.quantity} \u2014 {fmtBase(p.lineTotal)}</p>
+                                    <p key={i}>{p.name} x{p.quantity} \u2014 {fmtWith(p.lineTotal, sale.payments[0]?.currencyCode || undefined)}</p>
                                   ))}
                                 </div>
                                 <div className="flex flex-wrap gap-1.5 pt-0.5">
                                   {sale.payments.map((p, i) => (
                                     <Badge key={i} variant="outline" className="text-[10px] px-1.5 py-0">
-                                      {p.method}: {fmtBase(p.amount)}
+                                      {p.method}: {fmtWith(p.amount, p.currencyCode || undefined)}
                                     </Badge>
                                   ))}
                                 </div>
