@@ -222,9 +222,9 @@ export function ProductsTable() {
 
   const openCreate = useCallback(() => {
     resetForm()
-    // Default to the reference currency (USD or EUR from settings)
-    const refCurr = currencies.find((c) => c.code === refCode && !c.isBase)
-    setFormCurrency(refCurr?.id || currencies.find(c => !c.isBase)?.id || '')
+    // Default to the base currency (company's country currency)
+    const baseCurr = currencies.find(c => c.isBase)
+    setFormCurrency(baseCurr?.id || '')
     setDialogOpen(true)
   }, [currencies, refCode, resetForm])
 
@@ -893,7 +893,7 @@ export function ProductsTable() {
                     <SelectValue placeholder="Seleccionar" />
                   </SelectTrigger>
                   <SelectContent>
-                    {currencies.filter(c => !c.isBase && (c.code === 'USD' || c.code === 'EUR')).map((c) => (
+                    {currencies.filter(c => c.code === 'USD' || c.code === 'EUR').map((c) => (
                       <SelectItem key={c.id} value={c.id}>
                         {c.code} ({c.symbol})
                       </SelectItem>
