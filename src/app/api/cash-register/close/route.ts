@@ -39,12 +39,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'La caja ya está cerrada' }, { status: 400 })
     }
 
-    // Calculate totals from sales (cash payments only)
+    // Calculate totals from sales (all non-credit payments: cash, transfer, card, etc.)
+    // Credit does NOT count as money entering the register
     const pmList = await getPaymentMethodsFromDB().catch(() => FALLBACK_METHODS)
-    const cashCodes = new Set(pmList.filter(m => m.isCash).map(m => m.code))
+    const creditCodes = new Set(pmList.filter(m => m.isCredit).map(m => m.code))
     const totalSales = register.sales.reduce((sum, sale) => {
       return sum + sale.payments
-        .filter(p => cashCodes.has(p.method))
+        .filter(p => !creditCodes.has(p.method))
         .reduce((s, p) => s + p.amount, 0)
     }, 0)
 

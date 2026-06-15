@@ -214,16 +214,17 @@ export async function POST(request: NextRequest) {
       const cashCodes = new Set(pmList.filter(m => m.isCash).map(m => m.code))
       const creditCodes = new Set(pmList.filter(m => m.isCredit).map(m => m.code))
 
-      // Update cash register currentAmt if cash payment
+      // Update cash register currentAmt for cash + non-credit payments (transfer, card, etc.)
+      // Credit does NOT add to currentAmt since no money enters the register
       if (cashRegId) {
-        const cashPayments = payments.filter((p: { method: string }) => cashCodes.has(p.method))
-        const cashTotal = cashPayments.reduce((sum: number, p: { amount: number }) => sum + p.amount, 0)
-        if (cashTotal > 0) {
+        const nonCreditPayments = payments.filter((p: { method: string }) => !creditCodes.has(p.method))
+        const nonCreditTotal = nonCreditPayments.reduce((sum: number, p: { amount: number }) => sum + p.amount, 0)
+        if (nonCreditTotal > 0) {
           const reg = await tx.cashRegister.findUnique({ where: { id: cashRegId } })
           if (reg) {
             await tx.cashRegister.update({
               where: { id: cashRegId },
-              data: { currentAmt: Math.round((reg.currentAmt + cashTotal) * 100) / 100 },
+              data: { currentAmt: Math.round((reg.currentAmt + nonCreditTotal) * 100) / 100 },
             })
           }
         }

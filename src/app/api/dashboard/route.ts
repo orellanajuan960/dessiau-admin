@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
     // Sales in period
     const salesPeriod = await db.sale.findMany({
       where: { date: { gte: startDate, lte: endDate }, status: 'completada', branchId },
-      include: { lines: { include: { product: { select: { name: true } } } }, payments: true },
+      include: { lines: { include: { product: { select: { name: true, currencyId: true } } } }, payments: { include: { currency: { select: { code: true, symbol: true } } } }, currency: { select: { code: true, symbol: true } } },
     })
 
     // Expenses in period
@@ -93,6 +93,17 @@ export async function GET(request: NextRequest) {
       include: { lines: { include: { product: { select: { name: true } } } } },
     })
     const expensesMonth = await db.expense.findMany({ where: { date: { gte: monthStart }, branchId, deletedAt: null } })
+
+    // Build a map of product currency codes for the period
+    const productCurrencyMap = new Map<string, string>()
+    salesPeriod.forEach(sale => {
+      sale.lines.forEach(line => {
+        if (line.productId && !productCurrencyMap.has(line.productId)) {
+          // Use the sale's currency code as proxy for the line's currency
+          productCurrencyMap.set(line.productId, sale.currency?.code || '')
+        }
+      })
+    })
 
     // Calculate KPIs
     const ingresosHoy = salesToday.reduce((s, sale) => s + sale.total, 0)
@@ -124,15 +135,17 @@ export async function GET(request: NextRequest) {
     const utilidadNetaPeriodo = utilidadBrutaPeriodo - gastosPeriodo - perdidasPeriodo
 
     // Top 5 products by revenue (from period sales)
-    const productRevenue: Record<string, { name: string; revenue: number; qty: number }> = {}
+    const productRevenue: Record<string, { name: string; revenue: number; qty: number; currencyCode: string }> = {}
     salesPeriod.forEach(sale => {
+      const saleCurrencyCode = (sale as any).currency?.code || ''
       sale.lines.forEach(line => {
         const key = line.productId
         if (!productRevenue[key]) {
-          productRevenue[key] = { name: line.product?.name || 'Producto', revenue: 0, qty: 0 }
+          productRevenue[key] = { name: line.product?.name || 'Producto', revenue: 0, qty: 0, currencyCode: saleCurrencyCode }
         }
         productRevenue[key].revenue += line.lineTotal
         productRevenue[key].qty += line.quantity
+        if (saleCurrencyCode) productRevenue[key].currencyCode = saleCurrencyCode
       })
     })
     const topProducts = Object.values(productRevenue)
@@ -146,6 +159,7 @@ export async function GET(request: NextRequest) {
         client: { select: { name: true } },
         user: { select: { name: true } },
         lines: { include: { product: { select: { name: true } } } },
+        currency: { select: { code: true, symbol: true } },
       },
       orderBy: { date: 'desc' },
       take: 10,

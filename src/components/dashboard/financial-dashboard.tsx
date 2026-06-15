@@ -29,7 +29,7 @@ interface DashboardData {
   gastosPeriodo: number
   utilidadBrutaMes: number
   utilidadNetaMes: number
-  topProducts: { name: string; revenue: number; qty: number }[]
+  topProducts: { name: string; revenue: number; qty: number; currencyCode: string }[]
   recentSales: Array<{
     id: string
     date: string
@@ -37,6 +37,7 @@ interface DashboardData {
     status: string
     client: { name: string } | null
     user: { name: string }
+    currency?: { code: string; symbol: string } | null
   }>
   lowStockAlerts: Array<{ productName: string; stock: number; minStock: number }>
   overdueAlerts: Array<{ clientName: string; pendingBalance: number; dueDate: string }>
@@ -101,7 +102,7 @@ function KpiCard({
 }
 
 export function FinancialDashboard() {
-  const { fmtBase } = useCurrency()
+  const { fmtBase, fmtWith } = useCurrency()
   const selectedBranchId = useAppStore((s) => s.selectedBranchId)
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -290,6 +291,7 @@ export function FinancialDashboard() {
                       fontSize: '12px',
                     }}
                     formatter={(value: number) => [fmtBase(value), 'Ventas']}
+                    labelFormatter={(label: string) => label}
                   />
                   <Area
                     type="monotone"
@@ -324,7 +326,7 @@ export function FinancialDashboard() {
                     <p className="text-xs text-muted-foreground">{product.qty} uds</p>
                   </div>
                   <span className="text-sm font-semibold text-primary dark:text-primary">
-                    {fmtBase(product.revenue)}
+                    {fmtWith(product.revenue, product.currencyCode || undefined)}
                   </span>
                 </div>
               ))
@@ -361,7 +363,7 @@ export function FinancialDashboard() {
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-bold text-primary dark:text-primary">
-                        {fmtBase(sale.total)}
+                        {fmtWith(sale.total, sale.currency?.code || undefined)}
                       </p>
                       <Badge variant="outline" className="text-[10px]">
                         {sale.status}
