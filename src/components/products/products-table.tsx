@@ -685,7 +685,7 @@ export function ProductsTable() {
       <Dialog open={dialogOpen} onOpenChange={(open) => {
         if (!open) setDialogOpen(false)
       }}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md overflow-hidden">
           <DialogHeader>
             <DialogTitle>
               {editProduct ? 'Editar Producto' : 'Nuevo Producto'}
@@ -696,7 +696,7 @@ export function ProductsTable() {
                 : 'Completa los datos para crear un nuevo producto'}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 overflow-y-auto max-h-[70vh] pr-1">
             {/* Active toggle (only for edit) */}
             {editProduct && (
               <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
