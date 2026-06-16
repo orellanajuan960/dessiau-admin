@@ -897,7 +897,23 @@ export function OnboardingTutorial() {
     const completed = localStorage.getItem('jo-admin-tutorial-completed')
     if (!completed) {
       const savedStep = parseInt(localStorage.getItem('jo-admin-tutorial-step') || '0', 10)
-      const timer = setTimeout(() => {
+      const timer = setTimeout(async () => {
+        // Check if auto-show is enabled in settings
+        try {
+          const settings = await api.get<{ tutorialTexts: Record<string, unknown> }>('/api/settings')
+          const raw = settings?.tutorialTexts
+          if (raw && typeof raw === 'object') {
+            const config = (raw as Record<string, unknown>)._config as { autoShow?: boolean } | undefined
+            if (config && config.autoShow === false) {
+              // Auto-show is disabled — mark as completed so we don't check again
+              localStorage.setItem('jo-admin-tutorial-completed', 'true')
+              return
+            }
+          }
+        } catch {
+          // If settings can't be loaded, default to showing tutorial
+        }
+
         stepsRef.current = buildSteps(role)
         setStepIndex(isNaN(savedStep) ? 0 : Math.min(savedStep, stepsRef.current.length - 1))
         setIsOpen(true)

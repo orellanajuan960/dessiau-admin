@@ -16,7 +16,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
-import { Save, Loader2, RotateCcw, BookOpen, MessageSquare } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
+import { Save, Loader2, RotateCcw, BookOpen, MessageSquare, Eye, EyeOff } from 'lucide-react'
 import { toast } from 'sonner'
 
 // ── Default tutorial steps per role ──────────────────────────
@@ -90,6 +91,7 @@ const DEFAULT_STEPS: RoleSteps[] = [
 
 export function TutorialTextsEditor() {
   const [customTexts, setCustomTexts] = useState<Record<string, Record<string, { title: string; description: string }>>>({})
+  const [tutorialAutoShow, setTutorialAutoShow] = useState(true)
   const [selectedRole, setSelectedRole] = useState('admin')
   const [selectedStepId, setSelectedStepId] = useState<string>('')
   const [editTitle, setEditTitle] = useState('')
@@ -102,7 +104,15 @@ export function TutorialTextsEditor() {
       try {
         const settings = await api.get<{ tutorialTexts: Record<string, unknown> }>('/api/settings')
         if (settings?.tutorialTexts && typeof settings.tutorialTexts === 'object') {
-          setCustomTexts(settings.tutorialTexts as Record<string, Record<string, { title: string; description: string }>>)
+          const raw = settings.tutorialTexts as Record<string, unknown>
+          // Extract _config.autoShow separately
+          const config = raw._config as { autoShow?: boolean } | undefined
+          if (config && typeof config.autoShow === 'boolean') {
+            setTutorialAutoShow(config.autoShow)
+          }
+          // Filter out _config from role texts
+          const { _config, ...roleTexts } = raw
+          setCustomTexts(roleTexts as Record<string, Record<string, { title: string; description: string }>>)
         }
       } catch {
         // Use defaults
@@ -157,7 +167,9 @@ export function TutorialTextsEditor() {
         }
       }
 
-      await api.put('/api/settings', { tutorialTexts: updatedTexts })
+      // Include _config with autoShow setting
+      const fullTexts = { ...updatedTexts, _config: { autoShow: tutorialAutoShow } }
+      await api.put('/api/settings', { tutorialTexts: fullTexts })
       setCustomTexts(updatedTexts)
       toast.success('Textos del tutorial guardados')
     } catch {
@@ -167,9 +179,29 @@ export function TutorialTextsEditor() {
     }
   }
 
+  const handleAutoShowChange = async (checked: boolean) => {
+    setTutorialAutoShow(checked)
+    try {
+      // Get current tutorialTexts and update _config
+      const settings = await api.get<{ tutorialTexts: Record<string, unknown> }>('/api/settings')
+      const raw = settings?.tutorialTexts && typeof settings.tutorialTexts === 'object'
+        ? { ...(settings.tutorialTexts as Record<string, unknown>) }
+        : {}
+      const { _config, ...roleTexts } = raw
+      const mergedConfig = { ...(typeof _config === 'object' ? _config : {}), autoShow: checked }
+      const fullTexts = { ...roleTexts, _config: mergedConfig }
+      await api.put('/api/settings', { tutorialTexts: fullTexts })
+      toast.success(checked ? 'Tutorial automatico activado' : 'Tutorial automatico desactivado')
+    } catch {
+      setTutorialAutoShow(!checked)
+      toast.error('Error al cambiar la configuracion del tutorial')
+    }
+  }
+
   const resetAllTexts = () => {
     setCustomTexts({})
-    api.put('/api/settings', { tutorialTexts: {} }).catch(() => {})
+    // Preserve the _config when resetting texts
+    api.put('/api/settings', { tutorialTexts: { _config: { autoShow: tutorialAutoShow } } }).catch(() => {})
     toast.info('Textos restablecidos a valores por defecto')
   }
 
@@ -188,6 +220,31 @@ export function TutorialTextsEditor() {
 
   return (
     <div className="space-y-4">
+      {/* Auto-show toggle card */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                {tutorialAutoShow ? <Eye className="h-4.5 w-4.5 text-primary" /> : <EyeOff className="h-4.5 w-4.5 text-muted-foreground" />}
+              </div>
+              <div>
+                <CardTitle className="text-base">Mostrar tutorial automaticamente</CardTitle>
+                <CardDescription className="text-xs mt-0.5">
+                  {tutorialAutoShow
+                    ? 'Los usuarios que inicien sesion por primera vez veran el tutorial de configuracion al entrar al sistema.'
+                    : 'Los nuevos usuarios no veran el tutorial automaticamente. Podran iniciarlo manualmente desde el menu de perfil.'}
+                </CardDescription>
+              </div>
+            </div>
+            <Switch
+              checked={tutorialAutoShow}
+              onCheckedChange={handleAutoShowChange}
+            />
+          </div>
+        </CardHeader>
+      </Card>
+
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
