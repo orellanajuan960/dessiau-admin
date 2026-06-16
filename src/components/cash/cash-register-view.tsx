@@ -51,6 +51,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { FALLBACK_METHODS } from '@/lib/payment-methods'
 import {
   Wallet, Plus, ArrowUpCircle, ArrowDownCircle, Lock, Eye, Loader2,
   UserCircle, AlertTriangle, Banknote, ClipboardCheck, CheckCircle2,
@@ -70,6 +71,14 @@ interface CashRegister {
   user: { id: string; name: string }
   branch: { id: string; name: string }
   _count: { sales: number; movements: number }
+}
+
+interface PaymentMethodItem {
+  code: string
+  name: string
+  enabled: boolean
+  isCash: boolean
+  isCredit: boolean
 }
 
 interface BranchItem {
@@ -285,6 +294,7 @@ export function CashRegisterView() {
   const [showOpen, setShowOpen] = useState(false)
   const [showMovement, setShowMovement] = useState(false)
   const [movementRegId, setMovementRegId] = useState<string | null>(null)
+  const [moveMethods, setMoveMethods] = useState<PaymentMethodItem[]>([])
   const [showClose, setShowClose] = useState(false)
   const [closeRegId, setCloseRegId] = useState<string | null>(null)
   const [initialAmt, setInitialAmt] = useState('100')
@@ -294,6 +304,7 @@ export function CashRegisterView() {
   const [moveType, setMoveType] = useState('entrada')
   const [moveAmount, setMoveAmount] = useState('')
   const [moveConcept, setMoveConcept] = useState('')
+  const [moveMethod, setMoveMethod] = useState('')
   const [saving, setSaving] = useState(false)
   const [closeActual, setCloseActual] = useState('')
   const [closingAll, setClosingAll] = useState(false)
@@ -311,6 +322,7 @@ export function CashRegisterView() {
     methodBreakdown: Array<{ method: string; methodName: string; isCredit: boolean; currencyCode: string; count: number; total: number }>
     creditSales: Array<{ saleId: string; saleDate: string; saleNumber: string; clientName: string; saleTotal: number; creditAmount: number; creditAmountByCurrency: Record<string, number>; pendingBalance: number; currencyCode: string; products: Array<{ name: string; quantity: number; lineTotal: number; currencyCode: string }> }>
     sales: Array<{ id: string; date: string; number: string; total: number; status: string; clientName: string; userName: string; payments: Array<{ method: string; amount: number; currencyCode: string }>; products: Array<{ name: string; quantity: number; lineTotal: number; currencyCode: string }> }>
+    movements: Array<{ id: string; type: string; amount: number; concept: string; method: string; methodName: string; currencyCode: string; userName: string; createdAt: string }>
     totalSales: number; totalCash: number; totalCredit: number; totalOther: number
   }>>({})
   const [loadingDetail, setLoadingDetail] = useState<Record<string, boolean>>({})
@@ -462,6 +474,30 @@ export function CashRegisterView() {
     }
   }
 
+  const openMovementDialog = (regId?: string) => {
+    if (regId) setMovementRegId(regId)
+    setShowMovement(true)
+    // Load payment methods for the selector
+    if (moveMethods.length === 0) {
+      api.get<PaymentMethodItem[]>(`/api/payment-methods?country=${country || 'VE'}`).then((methods) => {
+        if (Array.isArray(methods) && methods.length > 0) {
+          // Filter: for entrada show all non-credit, for salida show all non-credit
+          const enabled = methods.filter(m => m.enabled && !m.isCredit)
+          setMoveMethods(enabled)
+          if (enabled.length > 0) setMoveMethod(enabled[0].code)
+        } else {
+          const fb = FALLBACK_METHODS.filter(m => m.enabled && !m.isCredit)
+          setMoveMethods(fb)
+          if (fb.length > 0) setMoveMethod(fb[0].code)
+        }
+      }).catch(() => {
+        const fb = FALLBACK_METHODS.filter(m => m.enabled && !m.isCredit)
+        setMoveMethods(fb)
+        if (fb.length > 0) setMoveMethod(fb[0].code)
+      })
+    }
+  }
+
   const addMovement = async () => {
     if (!moveAmount || !moveConcept) {
       toast.error('Monto y concepto son obligatorios')
@@ -480,6 +516,7 @@ export function CashRegisterView() {
         type: moveType,
         amount: parseFloat(moveAmount),
         concept: moveConcept,
+        method: moveMethod,
         currencyId: baseCurrency?.id || currencies[0]?.id || '',
         userId: user?.id || '',
       })
@@ -487,6 +524,7 @@ export function CashRegisterView() {
       setShowMovement(false)
       setMoveAmount('')
       setMoveConcept('')
+      setMoveMethod('')
       setMovementRegId(null)
       fetchData(filterBranchId)
     } catch {
@@ -733,8 +771,8 @@ export function CashRegisterView() {
                 {openRegisters.length > 0 && (
                   <>
                     <Button variant="outline" className="w-full justify-start gap-2" onClick={() => {
-                      if (openRegisters.length === 1) setMovementRegId(openRegisters[0].id)
-                      setShowMovement(true)
+                      if (openRegisters.length === 1) openMovementDialog(openRegisters[0].id)
+                      else openMovementDialog()
                     }}>
                       <ArrowDownCircle className="h-4 w-4" /> Movimiento
                     </Button>
@@ -829,7 +867,7 @@ export function CashRegisterView() {
                     </div>
 
                     {/* Sales detail toggle + breakdown */}
-                    {reg._count.sales > 0 && (
+                    {(reg._count.sales > 0 || reg._count.movements > 0) && (
                       <div className="space-y-2">
                         <button
                           className="flex items-center gap-1.5 text-xs text-primary hover:underline w-full text-left"
@@ -846,7 +884,7 @@ export function CashRegisterView() {
                             ? <ChevronUp className="h-3 w-3" />
                             : <ChevronDown className="h-3 w-3" />
                           }
-                          Ver desglose de ventas
+                          Ver desglose
                         </button>
                         {expandedRegDetail === reg.id && (
                           <div className="rounded-md border bg-muted/30 p-2.5 space-y-2 max-h-80 overflow-y-auto">
@@ -931,6 +969,38 @@ export function CashRegisterView() {
                                     </div>
                                   ))}
                                 </div>
+                                {/* Manual movements (entrada/salida) */}
+                                {salesDetail[reg.id].movements && salesDetail[reg.id].movements.length > 0 && (
+                                  <>
+                                    <Separator />
+                                    <div className="space-y-2">
+                                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Movimientos Manuales</p>
+                                      {salesDetail[reg.id].movements.map(mov => (
+                                        <div key={mov.id} className={`rounded border p-2 text-xs space-y-1 ${mov.type === 'entrada' ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20' : 'border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-950/20'}`}>
+                                          <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-1.5 min-w-0">
+                                              {mov.type === 'entrada'
+                                                ? <ArrowUpCircle className="h-3 w-3 text-emerald-600 shrink-0" />
+                                                : <ArrowDownCircle className="h-3 w-3 text-red-600 shrink-0" />
+                                              }
+                                              <span className="font-medium truncate">{mov.concept}</span>
+                                              {mov.methodName && mov.methodName !== 'Sin especificar' && (
+                                                <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">{mov.methodName}</Badge>
+                                              )}
+                                            </div>
+                                            <span className={`font-bold tabular-nums shrink-0 ${mov.type === 'entrada' ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>
+                                              {mov.type === 'entrada' ? '+' : '-'}{fmtWith(mov.amount, mov.currencyCode || undefined)}
+                                            </span>
+                                          </div>
+                                          <div className="flex items-center gap-2 text-muted-foreground">
+                                            <span>{new Date(mov.createdAt).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })}</span>
+                                            {mov.userName && <span>· {mov.userName}</span>}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </>
+                                )}
                               </>
                             ) : null}
                           </div>
@@ -946,8 +1016,7 @@ export function CashRegisterView() {
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Button size="sm" variant="ghost" className="h-8 px-2.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/30" onClick={() => {
-                                setMovementRegId(reg.id)
-                                setShowMovement(true)
+                                openMovementDialog(reg.id)
                               }}>
                                 <ArrowDownCircle className="h-4 w-4" />
                               </Button>
@@ -1154,7 +1223,7 @@ export function CashRegisterView() {
                                   ? <ChevronUp className="h-3 w-3" />
                                   : <ChevronDown className="h-3 w-3" />
                                 }
-                                Ver desglose de ventas y créditos
+                                Ver desglose y movimientos
                               </button>
                               {expandedRegDetail === reg.id && (
                                 <div className="mt-2 rounded-md border bg-muted/30 p-2.5 space-y-2 max-h-80 overflow-y-auto">
@@ -1234,6 +1303,38 @@ export function CashRegisterView() {
                                           </div>
                                         ))}
                                       </div>
+                                      {/* Manual movements (closed register) */}
+                                      {salesDetail[reg.id].movements && salesDetail[reg.id].movements.length > 0 && (
+                                        <>
+                                          <Separator />
+                                          <div className="space-y-2">
+                                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Movimientos Manuales</p>
+                                            {salesDetail[reg.id].movements.map(mov => (
+                                              <div key={mov.id} className={`rounded border p-2 text-xs space-y-1 ${mov.type === 'entrada' ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20' : 'border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-950/20'}`}>
+                                                <div className="flex items-center justify-between">
+                                                  <div className="flex items-center gap-1.5 min-w-0">
+                                                    {mov.type === 'entrada'
+                                                      ? <ArrowUpCircle className="h-3 w-3 text-emerald-600 shrink-0" />
+                                                      : <ArrowDownCircle className="h-3 w-3 text-red-600 shrink-0" />
+                                                    }
+                                                    <span className="font-medium truncate">{mov.concept}</span>
+                                                    {mov.methodName && mov.methodName !== 'Sin especificar' && (
+                                                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">{mov.methodName}</Badge>
+                                                    )}
+                                                  </div>
+                                                  <span className={`font-bold tabular-nums shrink-0 ${mov.type === 'entrada' ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>
+                                                    {mov.type === 'entrada' ? '+' : '-'}{fmtWith(mov.amount, mov.currencyCode || undefined)}
+                                                  </span>
+                                                </div>
+                                                <div className="flex items-center gap-2 text-muted-foreground">
+                                                  <span>{new Date(mov.createdAt).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })}</span>
+                                                  {mov.userName && <span>· {mov.userName}</span>}
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </>
+                                      )}
                                     </>
                                   ) : null}
                                 </div>
@@ -1391,6 +1492,17 @@ export function CashRegisterView() {
                 onChange={(e) => setMoveAmount(numericFilter(e.target.value))}
                 placeholder="0.00"
               />
+            </div>
+            <div className="space-y-2">
+              <Label>Metodo</Label>
+              <Select value={moveMethod} onValueChange={setMoveMethod}>
+                <SelectTrigger><SelectValue placeholder="Seleccionar metodo" /></SelectTrigger>
+                <SelectContent>
+                  {moveMethods.map((m) => (
+                    <SelectItem key={m.code} value={m.code}>{m.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="mconcept">Concepto *</Label>

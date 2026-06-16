@@ -296,6 +296,7 @@ model CashMovement {
   type       String
   amount     Float
   concept    String
+  method     String   @default("")
   currencyId String
   createdAt  DateTime @default(now())
 

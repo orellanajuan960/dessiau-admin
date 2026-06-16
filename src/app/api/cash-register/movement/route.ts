@@ -6,7 +6,7 @@ import { formatCurrency } from '@/lib/currency'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { cashRegId, type, amount, concept, currencyId, userId } = body
+    const { cashRegId, type, amount, concept, method, currencyId, userId } = body
 
     const register = await db.cashRegister.findUnique({ where: { id: cashRegId } })
     if (!register || register.status === 'cerrada') {
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
       })
 
       return tx.cashMovement.create({
-        data: { cashRegId, type, amount, concept, currencyId, userId },
+        data: { cashRegId, type, amount, concept, method: method || '', currencyId, userId },
         include: { user: { select: { id: true, name: true } }, currency: true },
       })
     })

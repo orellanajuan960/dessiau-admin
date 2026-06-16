@@ -266,6 +266,40 @@ export async function GET(
       }
     }
 
+    // ---------------------------------------------------------------
+    // 5) Fetch manual movements (entrada/salida) for the register
+    // ---------------------------------------------------------------
+    const movements = await db.cashMovement.findMany({
+      where: {
+        cashRegId: id,
+        type: { in: ['entrada', 'salida'] },
+      },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: { select: { name: true } },
+        currency: { select: { code: true, symbol: true } },
+      },
+    })
+
+    // Get method names for display
+    const methodDefs = await getPaymentMethodsFromDB()
+
+    const manualMovements = movements.map(m => {
+      const methodDef = methodDefs.find(d => d.code === m.method)
+        ?? FALLBACK_METHODS.find(d => d.code === m.method)
+      return {
+        id: m.id,
+        type: m.type,
+        amount: roundTwo(m.amount),
+        concept: m.concept,
+        method: m.method || '',
+        methodName: methodDef?.name || m.method || 'Sin especificar',
+        currencyCode: m.currency?.code || '',
+        userName: m.user?.name || '',
+        createdAt: m.createdAt.toISOString(),
+      }
+    })
+
     return NextResponse.json({
       methodBreakdown,
       creditSales,
@@ -274,6 +308,7 @@ export async function GET(
       totalCash: roundTwo(totalCash),
       totalCredit: roundTwo(totalCredit),
       totalOther: roundTwo(totalOther),
+      movements: manualMovements,
     })
   } catch (error) {
     console.error('[cash-register][id][sales] GET error:', error)
