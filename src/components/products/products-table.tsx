@@ -86,16 +86,21 @@ interface BranchItem {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
+function safeNum(n: unknown): number {
+  return (n == null || isNaN(n as number)) ? 0 : (n as number)
+}
+
 function fmt(n: number, decimals = 2): string {
-  return n.toLocaleString('es-VE', {
+  return safeNum(n).toLocaleString('es-VE', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   })
 }
 
 function fmtStock(n: number): string {
-  if (Number.isInteger(n)) return n.toLocaleString('es-VE')
-  return n.toLocaleString('es-VE', { maximumFractionDigits: 2 })
+  const v = safeNum(n)
+  if (Number.isInteger(v)) return v.toLocaleString('es-VE')
+  return v.toLocaleString('es-VE', { maximumFractionDigits: 2 })
 }
 
 // ── Component ───────────────────────────────────────────────────────────────

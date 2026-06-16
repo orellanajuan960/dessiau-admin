@@ -245,7 +245,7 @@ export function CashRegisterView() {
   const denominations = useMemo(() => getDenominations(country || 'VE'), [country])
 
   /** Format number with thousands separator for display */
-  const fmt = (val: number) => val.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const fmt = (val: number) => ((val == null || isNaN(val)) ? 0 : val).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   const [registers, setRegisters] = useState<CashRegister[]>([])
   const [loading, setLoading] = useState(true)

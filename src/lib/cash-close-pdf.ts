@@ -70,8 +70,12 @@ const C = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+function safeNum(n: unknown): number {
+  return (n == null || isNaN(n as number)) ? 0 : (n as number)
+}
+
 function fmt(amount: number, decimals = 2): string {
-  return amount.toLocaleString('es-VE', {
+  return safeNum(amount).toLocaleString('es-VE', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   })

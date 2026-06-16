@@ -31,13 +31,15 @@ export function getCurrencySymbol(code?: string | null): string {
 
 // ─── Format amount with symbol ────────────────────────────────────────────
 export function formatCurrency(amount: number, code?: string | null, decimals = 2): string {
+  const safe = (amount == null || isNaN(amount)) ? 0 : amount
   const sym = getCurrencySymbol(code)
-  return `${sym}${amount.toFixed(decimals)}`
+  return `${sym}${safe.toFixed(decimals)}`
 }
 
 // ─── Locale-aware formatting (es-VE) ──────────────────────────────────────
 export function formatAmount(amount: number, decimals = 2): string {
-  return amount.toLocaleString('es-VE', {
+  const safe = (amount == null || isNaN(amount)) ? 0 : amount
+  return safe.toLocaleString('es-VE', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   })
