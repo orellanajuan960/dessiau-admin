@@ -214,28 +214,28 @@ export function FinancialDashboard() {
       {/* KPI Cards - Row 1 */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
-          title="Ingresos Hoy"
-          value={fmtBase(data.ingresosHoy)}
+          title={`Ingresos (${data.chartLabel})`}
+          value={fmtBase(data.ingresosPeriodo)}
           icon={DollarSign}
           trend="up"
           color="primary"
         />
         <KpiCard
-          title="Gastos Hoy"
-          value={fmtBase(data.gastosHoy)}
+          title={`Gastos (${data.chartLabel})`}
+          value={fmtBase(data.gastosPeriodo)}
           icon={ShoppingCart}
-          trend={data.gastosHoy > 0 ? 'down' : 'up'}
+          trend={data.gastosPeriodo > 0 ? 'down' : 'up'}
           color="red"
         />
         <KpiCard
-          title="Utilidad Bruta (Mes)"
-          value={fmtBase(data.utilidadBrutaMes)}
+          title={`Utilidad Bruta (${data.chartLabel})`}
+          value={fmtBase(data.utilidadBrutaPeriodo)}
           icon={Target}
           color="violet"
         />
         <KpiCard
-          title="Utilidad Neta (Mes)"
-          value={fmtBase(data.utilidadNetaMes)}
+          title={`Utilidad Neta (${data.chartLabel})`}
+          value={fmtBase(data.utilidadNetaPeriodo)}
           icon={PiggyBank}
           color="amber"
         />
@@ -244,16 +244,9 @@ export function FinancialDashboard() {
       {/* KPI Cards - Row 2 */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
-          title={`Ventas del Período (${data.chartLabel})`}
+          title={`Ventas (${data.chartLabel})`}
           value={data.chartData.reduce((s, d) => s + d.count, 0).toString()}
           icon={Receipt}
-          trend="up"
-          color="primary"
-        />
-        <KpiCard
-          title={`Ingresos (${data.chartLabel})`}
-          value={fmtBase(data.ingresosPeriodo)}
-          icon={DollarSign}
           trend="up"
           color="primary"
         />
@@ -268,6 +261,13 @@ export function FinancialDashboard() {
           value={totalClients.toString()}
           icon={Users}
           color="amber"
+        />
+        <KpiCard
+          title="Ventas Hoy"
+          value={fmtBase(data.ingresosHoy)}
+          icon={DollarSign}
+          trend="up"
+          color="primary"
         />
       </div>
 
