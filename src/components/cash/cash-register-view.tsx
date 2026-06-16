@@ -235,6 +235,24 @@ const numericFilter = (value: string) => {
   return cleaned
 }
 
+/** Format credit amount using product-currency breakdown instead of payment amount */
+function fmtCreditAmount(cs: { creditAmountByCurrency: Record<string, number>; creditAmount: number; currencyCode: string }, fmtWith: (a: number, c?: string | null) => string): string {
+  const byCurrency = cs.creditAmountByCurrency || {}
+  const entries = Object.entries(byCurrency).filter(([, amt]) => amt > 0)
+  if (entries.length > 0) {
+    return entries.map(([code, amt]) => fmtWith(amt, code || undefined)).join(' + ')
+  }
+  return fmtWith(cs.creditAmount, cs.currencyCode || undefined)
+}
+
+/** Format pending balance — uses product currencies if no payments made yet */
+function fmtPendingBalance(cs: { creditAmountByCurrency: Record<string, number>; creditAmount: number; pendingBalance: number; currencyCode: string }, fmtWith: (a: number, c?: string | null) => string): string {
+  if (Math.abs(cs.pendingBalance - cs.creditAmount) < 0.01) {
+    return fmtCreditAmount(cs, fmtWith)
+  }
+  return fmtWith(cs.pendingBalance, cs.currencyCode || undefined)
+}
+
 export function CashRegisterView() {
   const { user, permissions } = useAuth()
   const { branches, selectedBranchId, setSelectedBranchId } = useAppStore()
@@ -277,7 +295,7 @@ export function CashRegisterView() {
   // Sales detail for registers
   const [salesDetail, setSalesDetail] = useState<Record<string, {
     methodBreakdown: Array<{ method: string; methodName: string; isCredit: boolean; currencyCode: string; count: number; total: number }>
-    creditSales: Array<{ saleId: string; saleDate: string; saleNumber: string; clientName: string; saleTotal: number; creditAmount: number; pendingBalance: number; currencyCode: string; products: Array<{ name: string; quantity: number; lineTotal: number; currencyCode: string }> }>
+    creditSales: Array<{ saleId: string; saleDate: string; saleNumber: string; clientName: string; saleTotal: number; creditAmount: number; creditAmountByCurrency: Record<string, number>; pendingBalance: number; currencyCode: string; products: Array<{ name: string; quantity: number; lineTotal: number; currencyCode: string }> }>
     sales: Array<{ id: string; date: string; number: string; total: number; status: string; clientName: string; userName: string; payments: Array<{ method: string; amount: number; currencyCode: string }>; products: Array<{ name: string; quantity: number; lineTotal: number; currencyCode: string }> }>
     totalSales: number; totalCash: number; totalCredit: number; totalOther: number
   }>>({})
@@ -854,7 +872,7 @@ export function CashRegisterView() {
                                               <span className="text-xs font-medium">{cs.clientName}</span>
                                               <span className="text-xs text-muted-foreground ml-1">#{cs.saleNumber}</span>
                                             </div>
-                                            <span className="text-xs font-bold tabular-nums shrink-0">{fmtWith(cs.creditAmount, cs.currencyCode || undefined)}</span>
+                                            <span className="text-xs font-bold tabular-nums shrink-0">{fmtCreditAmount(cs, fmtWith)}</span>
                                           </div>
                                           <div className="text-[11px] text-muted-foreground space-y-0.5">
                                             {cs.products.map((p, i) => (
@@ -862,7 +880,7 @@ export function CashRegisterView() {
                                             ))}
                                             {cs.pendingBalance > 0 && (
                                               <p className="text-amber-600 dark:text-amber-400 font-medium">
-                                                Saldo pendiente: {fmtWith(cs.pendingBalance, cs.currencyCode || undefined)}
+                                                Saldo pendiente: {fmtPendingBalance(cs, fmtWith)}
                                               </p>
                                             )}
                                           </div>
@@ -1158,7 +1176,7 @@ export function CashRegisterView() {
                                                     <span className="text-xs font-medium">{cs.clientName}</span>
                                                     <span className="text-xs text-muted-foreground ml-1">#{cs.saleNumber}</span>
                                                   </div>
-                                                  <span className="text-xs font-bold tabular-nums shrink-0">{fmtWith(cs.creditAmount, cs.currencyCode || undefined)}</span>
+                                                  <span className="text-xs font-bold tabular-nums shrink-0">{fmtCreditAmount(cs, fmtWith)}</span>
                                                 </div>
                                                 <div className="text-[11px] text-muted-foreground space-y-0.5">
                                                   {cs.products.map((p, i) => (
@@ -1166,7 +1184,7 @@ export function CashRegisterView() {
                                                   ))}
                                                   {cs.pendingBalance > 0 && (
                                                     <p className="text-amber-600 dark:text-amber-400 font-medium">
-                                                      Saldo pendiente: {fmtWith(cs.pendingBalance, cs.currencyCode || undefined)}
+                                                      Saldo pendiente: {fmtPendingBalance(cs, fmtWith)}
                                                     </p>
                                                   )}
                                                 </div>
@@ -1442,7 +1460,7 @@ export function CashRegisterView() {
                                       <span className="text-sm font-medium">{cs.clientName}</span>
                                       <span className="text-xs text-muted-foreground ml-2">#{cs.saleNumber}</span>
                                     </div>
-                                    <span className="text-sm font-bold tabular-nums">{fmtWith(cs.creditAmount, cs.currencyCode || undefined)}</span>
+                                    <span className="text-sm font-bold tabular-nums">{fmtCreditAmount(cs, fmtWith)}</span>
                                   </div>
                                   <div className="text-xs text-muted-foreground space-y-0.5">
                                     {cs.products.map((p, i) => (
@@ -1451,7 +1469,7 @@ export function CashRegisterView() {
                                   </div>
                                   {cs.pendingBalance > 0 && (
                                     <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">
-                                      Saldo pendiente: {fmtWith(cs.pendingBalance, cs.currencyCode || undefined)}
+                                      Saldo pendiente: {fmtPendingBalance(cs, fmtWith)}
                                     </p>
                                   )}
                                 </div>

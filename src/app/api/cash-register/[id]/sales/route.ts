@@ -121,6 +121,7 @@ export async function GET(
       clientName: string
       saleTotal: number
       creditAmount: number
+      creditAmountByCurrency: Record<string, number>
       pendingBalance: number
       currencyCode: string
       products: Array<{ name: string; quantity: number; lineTotal: number; currencyCode: string }>
@@ -138,12 +139,15 @@ export async function GET(
 
       creditSaleIds.push(sale.id)
 
-      const creditAmount = roundTwo(creditPayments.reduce((s, p) => s + p.amount, 0))
-      // Derive currency from products (not from payment which may have wrong currencyId)
+      const creditPaymentAmount = roundTwo(creditPayments.reduce((s, p) => s + p.amount, 0))
+
+      // Build products with their original currency
       const productCurrencies = new Set<string>()
+      const amountByCurrency: Record<string, number> = {}
       const products = sale.lines.map((l) => {
         const code = l.currencyCode || l.product?.currency?.code || ''
         if (code) productCurrencies.add(code)
+        amountByCurrency[code] = (amountByCurrency[code] || 0) + l.lineTotal
         return {
           name: l.product?.name ?? 'Producto eliminado',
           quantity: l.quantity,
@@ -152,11 +156,17 @@ export async function GET(
         }
       })
 
-      // Use product currency for credit display; if mixed, use the payment's currency as fallback
+      // For single-currency credit sales, show amount in product currency
+      // creditAmountByCurrency stores the sum of product lineTotals per currency
+      const creditAmountByCurrency: Record<string, number> = {}
+      for (const [code, amt] of Object.entries(amountByCurrency)) {
+        creditAmountByCurrency[code] = roundTwo(amt)
+      }
+
       const derivedCurrencies = [...productCurrencies].filter(Boolean)
       const currencyCode = derivedCurrencies.length === 1
         ? derivedCurrencies[0]
-        : (creditPayments[0]?.currency?.code ?? '')
+        : ''
 
       creditSales.push({
         saleId: sale.id,
@@ -164,8 +174,9 @@ export async function GET(
         saleNumber: sale.number ?? '',
         clientName: sale.client?.name ?? 'Consumidor final',
         saleTotal: roundTwo(sale.total),
-        creditAmount,
-        pendingBalance: creditAmount, // default; updated below
+        creditAmount: roundTwo(creditPaymentAmount),
+        creditAmountByCurrency,
+        pendingBalance: creditPaymentAmount, // default; updated below
         currencyCode,
         products,
       })
@@ -196,9 +207,18 @@ export async function GET(
     }
 
     // ---------------------------------------------------------------
-    // 3) Build full sales list
+    // 3) Build full sales list (exclude credit-only sales — they appear in creditSales)
     // ---------------------------------------------------------------
-    const salesList = sales.map((sale) => ({
+    const salesList = sales
+      .filter((sale) => {
+        // Exclude sales where ALL payments are credit methods
+        const allCredit = sale.payments.every((p) => {
+          const def = getMethodDef(p.method)
+          return def?.isCredit ?? false
+        })
+        return !allCredit
+      })
+      .map((sale) => ({
       id: sale.id,
       date: sale.date.toISOString(),
       number: sale.number ?? '',
