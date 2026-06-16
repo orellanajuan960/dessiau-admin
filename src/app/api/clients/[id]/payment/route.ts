@@ -29,7 +29,7 @@ export async function POST(
         clientId,
         status: 'pendiente',
       },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { id: 'asc' },
     })
 
     if (receivables.length === 0) {

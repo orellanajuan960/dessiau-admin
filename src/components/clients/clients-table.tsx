@@ -1146,7 +1146,12 @@ export function ClientsTable() {
                 </p>
               )}
               <p className="text-xs text-muted-foreground">
-                Saldo después del cobro: {fmtWith(Math.max(0, (paymentClient?.pendingBalance || 0) - paymentAmountInRef), isLocalMethod ? (baseCode || undefined) : (referenceCurrency || undefined))}
+                Saldo después del cobro: {(() => {
+                  const remaining = Math.max(0, (paymentClient?.pendingBalance || 0) - paymentAmountInRef)
+                  return isLocalMethod && exchangeRate > 0
+                    ? fmtWith(remaining * exchangeRate, baseCode || undefined)
+                    : fmtWith(remaining, referenceCurrency || undefined)
+                })()}
               </p>
             </div>
             {selectedPm?.needsReference && (
