@@ -78,8 +78,11 @@ export async function GET(
     for (const sale of sales) {
       for (const payment of sale.payments) {
         const def = getMethodDef(payment.method)
-        const methodName = def?.name ?? payment.method
         const isCredit = def?.isCredit ?? false
+        // Skip credit payments — they have their own dedicated section with correct per-currency amounts
+        if (isCredit) continue
+
+        const methodName = def?.name ?? payment.method
         const currencyCode = payment.currency?.code ?? ''
 
         const key = `${payment.method}|${currencyCode}`
