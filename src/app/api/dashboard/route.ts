@@ -149,9 +149,22 @@ export async function GET(request: NextRequest) {
       include: { product: true },
     })
 
+    // Helper: sum only non-credit payment amounts from a sale
+    const cashFromSale = (sale: { payments: { method: string; amount: number }[] }) =>
+      sale.payments.reduce((s, p) => s + (p.method === 'credito' ? 0 : p.amount), 0)
+
+    // Helper: proportional cost for the cash portion of a sale
+    const cashCostFromSale = (sale: { total: number; payments: { method: string; amount: number }[]; lines: { unitCost: number; quantity: number }[] }) => {
+      const cash = cashFromSale(sale)
+      const ratio = sale.total > 0 ? cash / sale.total : 0
+      const totalCost = sale.lines.reduce((s, l) => s + (l.unitCost * l.quantity), 0)
+      return totalCost * ratio
+    }
+
     // Sales today (always for KPI — uses timezone-aware boundaries)
     const salesToday = await db.sale.findMany({
       where: { date: { gte: todayStart, lte: todayEnd }, status: 'completada', branchId },
+      include: { payments: true },
     })
     const expensesToday = await db.expense.findMany({ where: { date: { gte: todayStart, lte: todayEnd }, branchId, deletedAt: null } })
 
@@ -160,7 +173,7 @@ export async function GET(request: NextRequest) {
     const monthEndDate = endOfDayInTz(tz, new Date(Date.UTC(year, month - 1, new Date(year, month, 0).getDate(), 12, 0, 0)))
     const salesMonth = await db.sale.findMany({
       where: { date: { gte: monthStartDate, lte: monthEndDate }, status: 'completada', branchId },
-      include: { lines: { include: { product: { select: { name: true } } } } },
+      include: { lines: { include: { product: { select: { name: true } } } }, payments: true },
     })
     const expensesMonth = await db.expense.findMany({ where: { date: { gte: monthStartDate, lte: monthEndDate }, branchId, deletedAt: null } })
 
@@ -174,14 +187,13 @@ export async function GET(request: NextRequest) {
       })
     })
 
-    // Calculate KPIs
-    const ingresosHoy = salesToday.reduce((s, sale) => s + sale.total, 0)
+    // Calculate KPIs — only count CASH received (exclude credit payments)
+    const ingresosHoy = salesToday.reduce((s, sale) => s + cashFromSale(sale), 0)
     const gastosHoy = expensesToday.reduce((s, e) => s + e.amount, 0)
-    const ingresosMes = salesMonth.reduce((s, sale) => s + sale.total, 0)
+    const ingresosMes = salesMonth.reduce((s, sale) => s + cashFromSale(sale), 0)
     const gastosMes = expensesMonth.reduce((s, e) => s + e.amount, 0)
 
-    const costoVentasMes = salesMonth.reduce((s, sale) =>
-      s + sale.lines.reduce((ls, l) => ls + (l.unitCost * l.quantity), 0), 0)
+    const costoVentasMes = salesMonth.reduce((s, sale) => s + cashCostFromSale(sale), 0)
     const utilidadBrutaMes = ingresosMes - costoVentasMes
     const perdidasMes = adjustmentsPeriod.reduce((s, a) => {
       const prod = a.product
@@ -189,13 +201,12 @@ export async function GET(request: NextRequest) {
     }, 0)
     const utilidadNetaMes = utilidadBrutaMes - gastosMes - perdidasMes
 
-    // Period totals
-    const ingresosPeriodo = salesPeriod.reduce((s, sale) => s + sale.total, 0)
+    // Period totals — only cash
+    const ingresosPeriodo = salesPeriod.reduce((s, sale) => s + cashFromSale(sale), 0)
     const gastosPeriodo = expensesPeriod.reduce((s, e) => s + e.amount, 0)
 
-    // Period-level utility calculations (for filtered views)
-    const costoVentasPeriodo = salesPeriod.reduce((s, sale) =>
-      s + sale.lines.reduce((ls, l) => ls + (l.unitCost * l.quantity), 0), 0)
+    // Period-level utility calculations (for filtered views) — only cash
+    const costoVentasPeriodo = salesPeriod.reduce((s, sale) => s + cashCostFromSale(sale), 0)
     const utilidadBrutaPeriodo = ingresosPeriodo - costoVentasPeriodo
     const perdidasPeriodo = adjustmentsPeriod.reduce((s, a) => {
       const prod = a.product
@@ -309,8 +320,9 @@ export async function GET(request: NextRequest) {
 
         const monthSales = await db.sale.findMany({
           where: { date: { gte: mStart, lt: mEnd }, status: 'completada', branchId },
+          include: { payments: true },
         })
-        const monthTotal = monthSales.reduce((s, sale) => s + sale.total, 0)
+        const monthTotal = monthSales.reduce((s, sale) => s + cashFromSale(sale), 0)
 
         const monthName = new Date(year, i, 1).toLocaleDateString('es-VE', { month: 'short' })
         chartData.push({
@@ -330,8 +342,9 @@ export async function GET(request: NextRequest) {
 
         const hourSales = await db.sale.findMany({
           where: { date: { gte: hStart, lt: hEnd }, status: 'completada', branchId },
+          include: { payments: true },
         })
-        const hourTotal = hourSales.reduce((s, sale) => s + sale.total, 0)
+        const hourTotal = hourSales.reduce((s, sale) => s + cashFromSale(sale), 0)
 
         if (hourTotal > 0 || h <= currentHourInTz) {
           chartData.push({
@@ -355,8 +368,9 @@ export async function GET(request: NextRequest) {
 
         const daySales = await db.sale.findMany({
           where: { date: { gte: d, lt: nextD }, status: 'completada', branchId },
+          include: { payments: true },
         })
-        const dayTotal = daySales.reduce((s, sale) => s + sale.total, 0)
+        const dayTotal = daySales.reduce((s, sale) => s + cashFromSale(sale), 0)
 
         chartData.push({
           date: d.toLocaleDateString('es-VE', { weekday: 'short', day: 'numeric', month: 'short' }),
