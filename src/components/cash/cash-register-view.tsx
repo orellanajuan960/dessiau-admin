@@ -1546,10 +1546,16 @@ export function CashRegisterView() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Total ventas:</span>
-                      <span className="font-bold tabular-nums">{detail ? fmtBase(detail.totalSales) : `${reg._count.sales} ventas`}</span>
+                      <span className="font-bold tabular-nums">{detail ? fmtBase(detail.totalSales - detail.totalCredit) : `${reg._count.sales} ventas`}</span>
                     </div>
+                    {detail && detail.totalCredit > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Ventas a credito:</span>
+                        <span className="font-bold tabular-nums text-amber-600 dark:text-amber-400">{fmtBase(detail.totalCredit)}</span>
+                      </div>
+                    )}
                   </div>
-                  {reg._count.sales > 0 && (
+                  {(reg._count.sales > 0 || reg._count.movements > 0) && (
                     <div className="space-y-3">
                       {loadingDetail[closeRegId] ? (
                         <div className="flex items-center justify-center py-6">
@@ -1630,6 +1636,35 @@ export function CashRegisterView() {
                           </div>
                         </>
                       ) : null}
+                      {/* Manual movements in close dialog */}
+                      {detail && detail.movements && detail.movements.length > 0 && (
+                        <div className="rounded-md border p-3 space-y-2">
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Movimientos Manuales</p>
+                          {detail.movements.map(mov => (
+                            <div key={mov.id} className={`rounded border p-2 text-xs space-y-1 ${mov.type === 'entrada' ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20' : 'border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-950/20'}`}>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  {mov.type === 'entrada'
+                                    ? <ArrowUpCircle className="h-3 w-3 text-emerald-600 shrink-0" />
+                                    : <ArrowDownCircle className="h-3 w-3 text-red-600 shrink-0" />
+                                  }
+                                  <span className="font-medium truncate">{mov.concept}</span>
+                                  {mov.methodName && mov.methodName !== 'Sin especificar' && (
+                                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">{mov.methodName}</Badge>
+                                  )}
+                                </div>
+                                <span className={`font-bold tabular-nums shrink-0 ${mov.type === 'entrada' ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>
+                                  {mov.type === 'entrada' ? '+' : '-'}{fmtWith(mov.amount, mov.currencyCode || undefined)}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 text-muted-foreground">
+                                <span>{new Date(mov.createdAt).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })}</span>
+                                {mov.userName && <span>· {mov.userName}</span>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </>
