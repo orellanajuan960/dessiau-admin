@@ -89,7 +89,7 @@ interface ProductOption {
   id: string
   name: string
   price: number
-  currency: { symbol: string }
+  currency: { symbol: string; code: string }
   inventories: Array<{ stock: number; branchId: string }>
 }
 
@@ -99,6 +99,7 @@ interface DispatchLine {
   quantity: number
   unitPrice: number
   stock: number
+  currencyCode: string
 }
 
 export function ClientsTable() {
@@ -152,6 +153,27 @@ export function ClientsTable() {
     const entries = Object.entries(byCurrency).filter(([, amt]) => amt > 0)
     if (entries.length === 0) return fmtWith(client.pendingBalance, baseCode || undefined)
     return entries.map(([code, amt]) => fmtWith(amt, code || baseCode || undefined)).join(' + ')
+  }
+
+  // Helper: compute per-currency totals from sale lines
+  const saleCurrencyTotals = (sale: SaleRecord): { code: string; total: number }[] => {
+    const byCurrency: Record<string, number> = {}
+    for (const line of sale.lines) {
+      const code = (line as any).currencyCode || line.product?.currency?.code || ''
+      if (!code) continue
+      byCurrency[code] = (byCurrency[code] || 0) + line.lineTotal
+    }
+    return Object.entries(byCurrency).map(([code, total]) => ({
+      code,
+      total: Math.round(total * 100) / 100,
+    }))
+  }
+
+  // Helper: format a sale's total with correct per-currency display
+  const fmtSaleTotal = (sale: SaleRecord): string => {
+    const currencies = saleCurrencyTotals(sale)
+    if (currencies.length === 0) return fmtWith(sale.total, baseCode || undefined)
+    return currencies.map(c => fmtWith(c.total, c.code || undefined)).join(' + ')
   }
 
   // Delete confirmation dialog
@@ -502,6 +524,7 @@ export function ClientsTable() {
         quantity: 1,
         unitPrice: product.price,
         stock,
+        currencyCode: product.currency?.code || '',
       }])
     }
   }
@@ -522,7 +545,15 @@ export function ClientsTable() {
     }
   }
 
-  const dispatchTotal = dispatchLines.reduce((sum, l) => sum + (l.unitPrice * l.quantity), 0)
+  const dispatchTotalByCurrency = dispatchLines.reduce<Record<string, number>>((acc, l) => {
+    const code = l.currencyCode || baseCode || ''
+    acc[code] = (acc[code] || 0) + l.unitPrice * l.quantity
+    return acc
+  }, {})
+  const fmtDispatchTotal = Object.entries(dispatchTotalByCurrency)
+    .map(([code, amt]) => fmtWith(Math.round(amt * 100) / 100, code || undefined))
+    .join(' + ') || fmt(0)
+  const dispatchTotalNum = dispatchLines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0)
 
   const handleDispatch = async () => {
     if (!dispatchClient || dispatchLines.length === 0) return
@@ -537,7 +568,7 @@ export function ClientsTable() {
         userId: user?.id || '',
         branchId: selectedBranchId || undefined,
       })
-      toast.success(`Despacho registrado. Total: ${fmt(dispatchTotal)}`)
+      toast.success(`Despacho registrado. Total: ${fmtDispatchTotal}`)
       setShowDispatchDialog(false)
       fetchClients()
     } catch (error) {
@@ -768,7 +799,7 @@ export function ClientsTable() {
                     const stock = branchInv?.stock ?? 0
                     return (
                       <SelectItem key={p.id} value={p.id} disabled={stock <= 0}>
-                        {p.name} — {p.currency.symbol}{p.price.toFixed(2)} (Stock: {stock})
+                        {p.name} — {fmtWith(p.price, p.currency?.code || undefined)} (Stock: {stock})
                       </SelectItem>
                     )
                   })}
@@ -789,7 +820,7 @@ export function ClientsTable() {
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate">{line.productName}</p>
                           <p className="text-xs text-muted-foreground">
-                            {fmt(line.unitPrice)} c/u · Stock: {line.stock}
+                            {fmtWith(line.unitPrice, line.currencyCode || undefined)} c/u · Stock: {line.stock}
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
@@ -812,7 +843,7 @@ export function ClientsTable() {
                           </Button>
                         </div>
                         <div className="text-right w-20">
-                          <p className="text-sm font-semibold">{fmt(line.unitPrice * line.quantity)}</p>
+                          <p className="text-sm font-semibold">{fmtWith(line.unitPrice * line.quantity, line.currencyCode || undefined)}</p>
                         </div>
                         <Button
                           size="sm"
@@ -827,7 +858,7 @@ export function ClientsTable() {
 
                     <div className="flex justify-between items-center pt-2 border-t">
                       <span className="text-sm font-medium">Total del Despacho:</span>
-                      <span className="text-lg font-bold text-primary">{fmt(dispatchTotal)}</span>
+                      <span className="text-lg font-bold text-primary">{fmtDispatchTotal}</span>
                     </div>
                   </div>
                 </CardContent>
@@ -849,7 +880,7 @@ export function ClientsTable() {
               disabled={savingDispatch || dispatchLines.length === 0}
             >
               {savingDispatch ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Truck className="mr-2 h-4 w-4" />}
-              {savingDispatch ? 'Procesando...' : `Confirmar Despacho (${fmt(dispatchTotal)})`}
+              {savingDispatch ? 'Procesando...' : `Confirmar Despacho (${fmtDispatchTotal})`}
             </Button>
           </div>
         </DialogContent>
@@ -881,11 +912,16 @@ export function ClientsTable() {
                       {(() => {
                         const byCurrency: Record<string, number> = {}
                         for (const sale of sales) {
-                          const code = sale.payments[0]?.currency?.code || baseCode || ''
-                          byCurrency[code] = (byCurrency[code] || 0) + sale.total
+                          for (const line of sale.lines) {
+                            const code = (line as any).currencyCode || line.product?.currency?.code || baseCode || ''
+                            if (!code) continue
+                            byCurrency[code] = (byCurrency[code] || 0) + line.lineTotal
+                          }
                         }
-                        const entries = Object.entries(byCurrency)
-                        return entries.map(([code, amt]) => fmtWith(amt, code || baseCode || undefined)).join(' + ')
+                        const entries = Object.entries(byCurrency).map(([code, amt]) => [code, Math.round(amt * 100) / 100] as const)
+                        return entries.length > 0
+                          ? entries.map(([code, amt]) => fmtWith(amt, code || undefined)).join(' + ')
+                          : fmtWith(0, baseCode || undefined)
                       })()}
                     </p>
                   </CardContent>
@@ -940,7 +976,7 @@ export function ClientsTable() {
                                   </Button>
                                 </TableCell>
                                 <TableCell className="text-sm font-medium text-right whitespace-nowrap">
-                                  {fmtWith(sale.total, sale.payments[0]?.currency?.code || baseCode || undefined)}
+                                  {fmtSaleTotal(sale)}
                                 </TableCell>
                                 <TableCell className="text-xs hidden lg:table-cell">
                                   {sale.payments.map(p => p.method).join(', ') || '—'}
@@ -1041,7 +1077,7 @@ export function ClientsTable() {
                   {detailSale.lines.length} producto{detailSale.lines.length !== 1 ? 's' : ''}
                 </span>
                 <span className="text-base font-bold">
-                  Total: {fmtWith(detailSale.total, detailSale.payments[0]?.currency?.code || baseCode || undefined)}
+                  Total: {detailSale ? fmtSaleTotal(detailSale) : ''}
                 </span>
               </div>
               {detailSale.receivables.length > 0 && detailSale.receivables[0].pendingBalance > 0 && (
