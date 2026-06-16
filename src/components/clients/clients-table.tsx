@@ -138,7 +138,7 @@ export function ClientsTable() {
   const [showPaymentDialog, setShowPaymentDialog] = useState(false)
   const [paying, setPaying] = useState(false)
   const [openCashRegId, setOpenCashRegId] = useState<string | null>(null)
-  const baseCurrencyId = useAppStore((s) => s.baseCurrencyId || '')
+  const baseCurrencyId = useSetting('baseCurrencyId')
   const country = useSetting('country') || 'VE'
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([])
 
