@@ -368,7 +368,7 @@ export async function GET(request: NextRequest) {
 
     // KPI helpers
     const ventasPeriodo = salesPeriod.length
-    const totalActiveProducts = await db.product.count({ where: { active: true, branchId } })
+    const totalActiveProducts = await db.product.count({ where: { active: true } })
     const clientesPeriodo = new Set(salesPeriod.map(s => s.clientId).filter(Boolean)).size
 
     // Open cash register
