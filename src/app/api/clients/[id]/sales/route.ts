@@ -12,10 +12,15 @@ export async function GET(
       where: { clientId: id },
       include: {
         user: { select: { name: true } },
-        payments: { include: { currency: true } },
-        lines: { include: { product: { select: { name: true } } } },
+        payments: { include: { currency: { select: { code: true, symbol: true } } } },
+        lines: {
+          include: {
+            product: {
+              select: { name: true, currency: { select: { code: true } } } },
+            },
+        },
         branch: { select: { name: true } },
-        receivables: { select: { pendingBalance: true, status: true, dueDate: true } },
+        receivables: { select: { pendingBalance: true, status: true, dueDate: true, currencyId: true, currency: { select: { code: true } } } },
       },
       orderBy: { date: 'desc' },
       take: 50,

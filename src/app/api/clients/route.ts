@@ -37,18 +37,29 @@ export async function GET(request: NextRequest) {
         _count: { select: { sales: true } },
         receivables: {
           where: { status: 'pendiente' },
-          select: { pendingBalance: true },
+          select: { pendingBalance: true, currencyId: true, currency: { select: { code: true } } },
         },
       },
       orderBy: { name: 'asc' },
     })
 
-    // Compute pending balance for each client
+    // Compute pending balance per currency for each client
     const clientsWithBalance = clients.map(client => {
-      const pendingBalance = client.receivables.reduce((sum, r) => sum + r.pendingBalance, 0)
+      const totalPendingBalance = client.receivables.reduce((sum, r) => sum + r.pendingBalance, 0)
+      // Build a map of currencyCode -> total pending
+      const balanceByCurrency: Record<string, number> = {}
+      for (const r of client.receivables) {
+        const code = r.currency?.code || ''
+        balanceByCurrency[code] = (balanceByCurrency[code] || 0) + r.pendingBalance
+      }
+      // Round each currency balance
+      for (const code of Object.keys(balanceByCurrency)) {
+        balanceByCurrency[code] = Math.round(balanceByCurrency[code] * 100) / 100
+      }
       return {
         ...client,
-        pendingBalance: Math.round(pendingBalance * 100) / 100,
+        pendingBalance: Math.round(totalPendingBalance * 100) / 100,
+        balanceByCurrency,
       }
     })
 

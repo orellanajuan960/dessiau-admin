@@ -1001,7 +1001,7 @@ export function OnboardingTutorial() {
 
         {/* Close button */}
         <button
-          onClick={() => stopTour(false)}
+          onClick={() => stopTour(true)}
           className="absolute top-3 right-3 h-6 w-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
         >
           <X className="h-3.5 w-3.5" />
@@ -1077,7 +1077,7 @@ export function OnboardingTutorial() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => stopTour(false)}
+            onClick={() => stopTour(true)}
             className="text-xs text-muted-foreground h-8"
           >
             Omitir

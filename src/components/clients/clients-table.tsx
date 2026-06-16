@@ -69,6 +69,7 @@ interface Client {
   note: string | null
   deletedAt: string | null
   pendingBalance: number
+  balanceByCurrency: Record<string, number>
   _count: { sales: number }
 }
 
@@ -79,9 +80,9 @@ interface SaleRecord {
   status: string
   user: { name: string }
   branch: { name: string }
-  payments: Array<{ method: string; amount: number; currency: { symbol: string } }>
-  lines: Array<{ product: { name: string }; quantity: number; unitPrice: number; lineTotal: number }>
-  receivables: Array<{ pendingBalance: number; status: string; dueDate: string | null }>
+  payments: Array<{ method: string; amount: number; currency: { code: string; symbol: string } }>
+  lines: Array<{ product: { name: string; currency?: { code: string } }; quantity: number; unitPrice: number; lineTotal: number; currencyCode?: string }>
+  receivables: Array<{ pendingBalance: number; status: string; dueDate: string | null; currency?: { code: string } }>
 }
 
 interface ProductOption {
@@ -141,9 +142,17 @@ export function ClientsTable() {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([])
 
   const referenceCurrency = useSetting('referenceCurrency')
-  const { sym: currencySymbol, baseSym, rate: exchangeRate, fmt } = useCurrency()
+  const { sym: currencySymbol, baseSym, baseCode, rate: exchangeRate, fmt, fmtWith } = useCurrency()
   const selectedPm = paymentMethods.find(m => m.code === paymentMethod)
   const isLocalMethod = selectedPm?.isLocalCurrency ?? false
+
+  // Helper: format client debt with correct currency symbols
+  const fmtDebt = (client: Client): string => {
+    const byCurrency = client.balanceByCurrency || {}
+    const entries = Object.entries(byCurrency).filter(([, amt]) => amt > 0)
+    if (entries.length === 0) return fmtWith(client.pendingBalance, baseCode || undefined)
+    return entries.map(([code, amt]) => fmtWith(amt, code || baseCode || undefined)).join(' + ')
+  }
 
   // Delete confirmation dialog
   const [deleteTarget, setDeleteTarget] = useState<Client | null>(null)
@@ -435,7 +444,7 @@ export function ClientsTable() {
       return
     }
     if (paymentAmountInRef > paymentClient.pendingBalance) {
-      toast.error(`El monto no puede ser mayor al saldo pendiente (${fmt(paymentClient.pendingBalance)})`)
+      toast.error(`El monto no puede ser mayor al saldo pendiente (${fmtDebt(paymentClient)})`)
       return
     }
     if (selectedPm?.isCash && !openCashRegId) {
@@ -606,7 +615,7 @@ export function ClientsTable() {
                       : 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400'
                     }`}>
                       {client.pendingBalance > 0
-                        ? `${fmt(client.pendingBalance)}`
+                        ? fmtDebt(client)
                         : 'Sin deuda'
                       }
                     </span>
@@ -641,7 +650,7 @@ export function ClientsTable() {
                   </div>
                   {client.pendingBalance > 0 && (
                     <div className="text-red-600 font-medium">
-                      Debe: {fmt(client.pendingBalance)}
+                      Debe: {fmtDebt(client)}
                     </div>
                   )}
                 </div>
@@ -869,7 +878,15 @@ export function ClientsTable() {
                   <CardContent className="p-3 text-center">
                     <p className="text-xs text-muted-foreground">Total Comprado</p>
                     <p className="text-xl font-bold">
-                      {fmt(sales.reduce((s, sale) => s + sale.total, 0))}
+                      {(() => {
+                        const byCurrency: Record<string, number> = {}
+                        for (const sale of sales) {
+                          const code = sale.payments[0]?.currency?.code || baseCode || ''
+                          byCurrency[code] = (byCurrency[code] || 0) + sale.total
+                        }
+                        const entries = Object.entries(byCurrency)
+                        return entries.map(([code, amt]) => fmtWith(amt, code || baseCode || undefined)).join(' + ')
+                      })()}
                     </p>
                   </CardContent>
                 </Card>
@@ -923,7 +940,7 @@ export function ClientsTable() {
                                   </Button>
                                 </TableCell>
                                 <TableCell className="text-sm font-medium text-right whitespace-nowrap">
-                                  {fmt(sale.total)}
+                                  {fmtWith(sale.total, sale.payments[0]?.currency?.code || baseCode || undefined)}
                                 </TableCell>
                                 <TableCell className="text-xs hidden lg:table-cell">
                                   {sale.payments.map(p => p.method).join(', ') || '—'}
@@ -932,7 +949,7 @@ export function ClientsTable() {
                                   {isCredit ? (
                                     <Badge variant="outline" className="text-amber-600 border-amber-300">
                                       {sale.receivables[0]?.pendingBalance > 0
-                                        ? `Pendiente: ${fmt(sale.receivables[0].pendingBalance)}`
+                                        ? `Pendiente: ${fmtWith(sale.receivables[0].pendingBalance, sale.receivables[0].currency?.code || baseCode || undefined)}`
                                         : 'Credito'}
                                     </Badge>
                                   ) : (
@@ -1005,14 +1022,17 @@ export function ClientsTable() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {detailSale.lines.map((line, i) => (
-                      <TableRow key={i}>
-                        <TableCell className="text-sm font-medium">{line.product.name}</TableCell>
-                        <TableCell className="text-sm text-center">{line.quantity}</TableCell>
-                        <TableCell className="text-sm text-right">{fmt(line.unitPrice)}</TableCell>
-                        <TableCell className="text-sm text-right font-medium">{fmt(line.lineTotal)}</TableCell>
-                      </TableRow>
-                    ))}
+                    {detailSale.lines.map((line, i) => {
+                      const lineCode = (line as any).currencyCode || line.product?.currency?.code || detailSale.payments[0]?.currency?.code || baseCode || ''
+                      return (
+                        <TableRow key={i}>
+                          <TableCell className="text-sm font-medium">{line.product.name}</TableCell>
+                          <TableCell className="text-sm text-center">{line.quantity}</TableCell>
+                          <TableCell className="text-sm text-right">{fmtWith(line.unitPrice, lineCode || undefined)}</TableCell>
+                          <TableCell className="text-sm text-right font-medium">{fmtWith(line.lineTotal, lineCode || undefined)}</TableCell>
+                        </TableRow>
+                      )
+                    })}
                   </TableBody>
                 </Table>
               </div>
@@ -1021,12 +1041,12 @@ export function ClientsTable() {
                   {detailSale.lines.length} producto{detailSale.lines.length !== 1 ? 's' : ''}
                 </span>
                 <span className="text-base font-bold">
-                  Total: {fmt(detailSale.total)}
+                  Total: {fmtWith(detailSale.total, detailSale.payments[0]?.currency?.code || baseCode || undefined)}
                 </span>
               </div>
               {detailSale.receivables.length > 0 && detailSale.receivables[0].pendingBalance > 0 && (
                 <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2 text-xs text-amber-700 dark:text-amber-400">
-                  Saldo pendiente: {fmt(detailSale.receivables[0].pendingBalance)}
+                  Saldo pendiente: {fmtWith(detailSale.receivables[0].pendingBalance, detailSale.receivables[0].currency?.code || baseCode || undefined)}
                   {detailSale.receivables[0].dueDate && ` — Vence: ${new Date(detailSale.receivables[0].dueDate).toLocaleDateString('es-VE')}`}
                 </div>
               )}
@@ -1053,7 +1073,7 @@ export function ClientsTable() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Deuda pendiente:</span>
-                  <span className="font-medium text-red-600">{fmt(paymentClient.pendingBalance)}</span>
+                  <span className="font-medium text-red-600">{fmtDebt(paymentClient)}</span>
                 </div>
               </div>
             )}
@@ -1090,7 +1110,7 @@ export function ClientsTable() {
                 </p>
               )}
               <p className="text-xs text-muted-foreground">
-                Saldo después del cobro: {fmt((paymentClient?.pendingBalance || 0) - paymentAmountInRef)}
+                Saldo después del cobro: {fmtWith(Math.max(0, (paymentClient?.pendingBalance || 0) - paymentAmountInRef), isLocalMethod ? (baseCode || undefined) : (referenceCurrency || undefined))}
               </p>
             </div>
             {selectedPm?.needsReference && (
