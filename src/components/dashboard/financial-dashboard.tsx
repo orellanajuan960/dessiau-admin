@@ -29,6 +29,11 @@ interface DashboardData {
   gastosPeriodo: number
   utilidadBrutaMes: number
   utilidadNetaMes: number
+  utilidadBrutaPeriodo?: number
+  utilidadNetaPeriodo?: number
+  ventasPeriodo: number
+  totalActiveProducts: number
+  clientesPeriodo: number
   topProducts: { name: string; revenue: number; qty: number; currencyCode: string }[]
   recentSales: Array<{
     id: string
@@ -144,8 +149,8 @@ export function FinancialDashboard() {
       .finally(() => setLoading(false))
   }, [selectedBranchId, period, customFrom, customTo, isCustomValid])
 
-  const totalProducts = data?.topProducts.length || 0
-  const totalClients = new Set(data?.recentSales.map(s => s.client?.name).filter(Boolean)).size || 0
+  const totalProducts = data?.totalActiveProducts || 0
+  const totalClients = data?.clientesPeriodo || 0
 
   if (loading) {
     return (
@@ -245,7 +250,7 @@ export function FinancialDashboard() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
           title={`Ventas (${data.chartLabel})`}
-          value={data.chartData.reduce((s, d) => s + d.count, 0).toString()}
+          value={(data.ventasPeriodo ?? 0).toString()}
           icon={Receipt}
           trend="up"
           color="primary"
@@ -257,7 +262,7 @@ export function FinancialDashboard() {
           color="violet"
         />
         <KpiCard
-          title="Clientes"
+          title={period === 'today' ? 'Clientes Hoy' : `Clientes (${data.chartLabel})`}
           value={totalClients.toString()}
           icon={Users}
           color="amber"

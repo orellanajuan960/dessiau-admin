@@ -296,65 +296,62 @@ export async function GET(request: NextRequest) {
       dueDate: p.dueDate,
     }))
 
-    // Chart data based on period
+    // Chart data based on period — always uses the timezone-aware startDate/endDate
     const chartData: { date: string; total: number; count: number }[] = []
 
     if (period === 'year') {
-      // Monthly chart for year view
-      for (let i = 11; i >= 0; i--) {
-        const mStart = new Date(today.getFullYear(), today.getMonth() - i, 1)
-        const mEnd = new Date(today.getFullYear(), today.getMonth() - i + 1, 1)
+      // Monthly chart for year view — use timezone-aware month boundaries
+      for (let i = 0; i < 12; i++) {
+        const mStart = startOfDayInTz(tz, new Date(Date.UTC(year, i, 1, 12, 0, 0)))
+        const mEnd = i < 11
+          ? startOfDayInTz(tz, new Date(Date.UTC(year, i + 1, 1, 12, 0, 0)))
+          : new Date(endOfDayInTz(tz, new Date(Date.UTC(year, 11, 31, 12, 0, 0))).getTime() + 1)
 
         const monthSales = await db.sale.findMany({
           where: { date: { gte: mStart, lt: mEnd }, status: 'completada', branchId },
         })
         const monthTotal = monthSales.reduce((s, sale) => s + sale.total, 0)
 
+        const monthName = new Date(year, i, 1).toLocaleDateString('es-VE', { month: 'short' })
         chartData.push({
-          date: mStart.toLocaleDateString('es-VE', { month: 'short' }),
+          date: monthName.charAt(0).toUpperCase() + monthName.slice(1),
           total: Math.round(monthTotal * 100) / 100,
           count: monthSales.length,
         })
       }
     } else if (period === 'today') {
-      // Hourly chart for today
+      // Hourly chart for today — use timezone-aware boundaries from todayStart
+      const nowTz = new Date().toLocaleString('en-US', { timeZone: tz })
+      const currentHourInTz = parseInt(new Date(nowTz).getHours().toString(), 10)
+
       for (let h = 0; h < 24; h++) {
-        const hStart = new Date(today)
-        hStart.setHours(h, 0, 0, 0)
-        const hEnd = new Date(today)
-        hEnd.setHours(h + 1, 0, 0, 0)
+        const hStart = new Date(todayStart.getTime() + h * 3600 * 1000)
+        const hEnd = new Date(todayStart.getTime() + (h + 1) * 3600 * 1000)
 
         const hourSales = await db.sale.findMany({
           where: { date: { gte: hStart, lt: hEnd }, status: 'completada', branchId },
         })
         const hourTotal = hourSales.reduce((s, sale) => s + sale.total, 0)
 
-        if (hourTotal > 0 || h <= new Date().getHours()) {
+        if (hourTotal > 0 || h <= currentHourInTz) {
           chartData.push({
-            date: `${h}:00`,
+            date: `${h.toString().padStart(2, '0')}:00`,
             total: Math.round(hourTotal * 100) / 100,
             count: hourSales.length,
           })
         }
       }
     } else {
-      // Daily chart for week/month/custom
-      const rangeStart = isCustom ? new Date(startDate) : new Date()
-      if (!isCustom) rangeStart.setDate(rangeStart.getDate() - (chartDays - 1))
-      rangeStart.setHours(0, 0, 0, 0)
-      const rangeEnd = isCustom ? new Date(endDate) : new Date()
-      rangeEnd.setHours(23, 59, 59, 999)
+      // Daily chart for week/month/custom — use the already-computed startDate/endDate
+      const rangeStart = new Date(startDate)
+      const rangeEnd = new Date(endDate)
       const totalDays = Math.ceil((rangeEnd.getTime() - rangeStart.getTime()) / (1000 * 60 * 60 * 24)) + 1
-      const cappedDays = Math.min(totalDays, 60) // cap chart points for readability
       // If range > 60 days, group into weeks; otherwise show daily
       const groupByDays = totalDays > 60 ? 7 : 1
       for (let i = 0; i < totalDays; i += groupByDays) {
-        const d = new Date(rangeStart)
-        d.setDate(d.getDate() + i)
-        d.setHours(0, 0, 0, 0)
-        const nextD = new Date(d)
-        nextD.setDate(nextD.getDate() + groupByDays)
-        if (nextD > rangeEnd) nextD.setTime(rangeEnd.getTime())
+        const d = new Date(rangeStart.getTime() + i * 24 * 3600 * 1000)
+        const nextD = new Date(rangeStart.getTime() + (i + groupByDays) * 24 * 3600 * 1000)
+        if (nextD > rangeEnd) nextD.setTime(rangeEnd.getTime() + 1)
 
         const daySales = await db.sale.findMany({
           where: { date: { gte: d, lt: nextD }, status: 'completada', branchId },
@@ -368,6 +365,11 @@ export async function GET(request: NextRequest) {
         })
       }
     }
+
+    // KPI helpers
+    const ventasPeriodo = salesPeriod.length
+    const totalActiveProducts = await db.product.count({ where: { active: true, branchId } })
+    const clientesPeriodo = new Set(salesPeriod.map(s => s.clientId).filter(Boolean)).size
 
     // Open cash register
     const openRegister = await db.cashRegister.findFirst({
@@ -397,6 +399,9 @@ export async function GET(request: NextRequest) {
       chartData,
       chartLabel,
       period,
+      ventasPeriodo,
+      totalActiveProducts,
+      clientesPeriodo,
       openRegister,
     })
   } catch (error) {
