@@ -139,7 +139,24 @@ export async function GET(
       creditSaleIds.push(sale.id)
 
       const creditAmount = roundTwo(creditPayments.reduce((s, p) => s + p.amount, 0))
-      const currencyCode = creditPayments[0]?.currency?.code ?? ''
+      // Derive currency from products (not from payment which may have wrong currencyId)
+      const productCurrencies = new Set<string>()
+      const products = sale.lines.map((l) => {
+        const code = l.currencyCode || l.product?.currency?.code || ''
+        if (code) productCurrencies.add(code)
+        return {
+          name: l.product?.name ?? 'Producto eliminado',
+          quantity: l.quantity,
+          lineTotal: roundTwo(l.lineTotal),
+          currencyCode: code,
+        }
+      })
+
+      // Use product currency for credit display; if mixed, use the payment's currency as fallback
+      const derivedCurrencies = [...productCurrencies].filter(Boolean)
+      const currencyCode = derivedCurrencies.length === 1
+        ? derivedCurrencies[0]
+        : (creditPayments[0]?.currency?.code ?? '')
 
       creditSales.push({
         saleId: sale.id,
@@ -150,13 +167,7 @@ export async function GET(
         creditAmount,
         pendingBalance: creditAmount, // default; updated below
         currencyCode,
-        products: sale.lines.map((l) => ({
-          name: l.product?.name ?? 'Producto eliminado',
-          quantity: l.quantity,
-          lineTotal: roundTwo(l.lineTotal),
-          // Use SaleLine.currencyCode first (set at sale time), fallback to product's current currency
-          currencyCode: l.currencyCode || l.product?.currency?.code || '',
-        })),
+        products,
       })
     }
 
@@ -205,7 +216,7 @@ export async function GET(
         quantity: l.quantity,
         lineTotal: roundTwo(l.lineTotal),
         // Use SaleLine.currencyCode first (set at sale time), fallback to product's current currency
-        currencyCode: (l as any).currencyCode || l.product?.currency?.code || '',
+        currencyCode: l.currencyCode || l.product?.currency?.code || '',
       })),
     }))
 
