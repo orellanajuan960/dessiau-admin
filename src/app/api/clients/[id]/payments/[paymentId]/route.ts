@@ -30,49 +30,78 @@ export async function DELETE(
     }
 
     let appliedDetails: AppliedDetail[] = []
+    let hasDetails = false
     try {
       appliedDetails = JSON.parse(payment.appliedDetails || '[]')
+      if (appliedDetails.length > 0) hasDetails = true
     } catch {
-      // If appliedDetails is corrupt but amount > 0, we can still try a best-effort reverse
-      if (payment.amount > 0) {
-        return NextResponse.json({
-          error: 'Datos de pago corruptos. Este cobro fue registrado antes del sistema de trazabilidad. Contacta soporte para revertirlo manualmente.',
-        }, { status: 400 })
-      }
+      // Corrupt JSON — proceed without details, do best-effort reverse
     }
 
     await db.$transaction(async (tx) => {
-      // 1. Reverse each receivable balance
-      for (const detail of appliedDetails) {
-        const receivable = await tx.accountReceivable.findUnique({
-          where: { id: detail.receivableId },
-        })
+      if (hasDetails) {
+        // ── Exact reverse: we know which receivables were affected ──
+        for (const detail of appliedDetails) {
+          const receivable = await tx.accountReceivable.findUnique({
+            where: { id: detail.receivableId },
+          })
 
-        if (!receivable) {
-          console.warn(`[Delete ClientPayment] Receivable ${detail.receivableId} not found, skipping`)
-          continue
+          if (!receivable) {
+            console.warn(`[Delete ClientPayment] Receivable ${detail.receivableId} not found, skipping`)
+            continue
+          }
+
+          const restoredBalance = Math.round((receivable.pendingBalance + detail.amountApplied) * 100) / 100
+          const originalAmount = Math.round((detail.amountApplied + detail.newBalance) * 100) / 100
+          const newStatus = restoredBalance >= originalAmount ? 'pendiente' : 'parcial'
+
+          await tx.accountReceivable.update({
+            where: { id: detail.receivableId },
+            data: {
+              pendingBalance: restoredBalance,
+              status: newStatus,
+            },
+          })
         }
-
-        const restoredBalance = Math.round((receivable.pendingBalance + detail.amountApplied) * 100) / 100
-        const originalAmount = Math.round((detail.amountApplied + detail.newBalance) * 100) / 100
-        const newStatus = restoredBalance >= originalAmount ? 'pendiente' : 'parcial'
-
-        await tx.accountReceivable.update({
-          where: { id: detail.receivableId },
-          data: {
-            pendingBalance: restoredBalance,
-            status: newStatus,
-          },
+      } else {
+        // ── Best-effort reverse: no details stored (migrated record) ──
+        // Restore the payment amount across the client's receivables (FIFO reverse)
+        const receivables = await tx.accountReceivable.findMany({
+          where: { clientId, status: { in: ['parcial', 'pagada'] } },
+          orderBy: { id: 'desc' }, // Reverse order (last paid → first to reverse)
         })
+
+        let remaining = payment.amount
+        for (const recv of receivables) {
+          if (remaining <= 0) break
+
+          // How much was paid on this receivable? (original - pending)
+          const paidOnThis = Math.round((recv.amount - recv.pendingBalance) * 100) / 100
+          if (paidOnThis <= 0) continue
+
+          // The amount we can reverse is min(remaining, what was paid)
+          const toRestore = Math.min(remaining, paidOnThis)
+          const restoredBalance = Math.round((recv.pendingBalance + toRestore) * 100) / 100
+          const newStatus = restoredBalance >= recv.amount ? 'pendiente' : 'parcial'
+
+          await tx.accountReceivable.update({
+            where: { id: recv.id },
+            data: {
+              pendingBalance: restoredBalance,
+              status: newStatus,
+            },
+          })
+
+          remaining = Math.round((remaining - toRestore) * 100) / 100
+        }
       }
 
-      // 2. Remove the cash movement if it was created for this payment
+      // Remove the cash movement if it was created for this payment
       if (payment.cashRegId) {
         const pmList = await getPaymentMethodsFromDB().catch(() => FALLBACK_METHODS)
         const cashCodes = new Set(pmList.filter(m => m.isCash).map(m => m.code))
 
         if (cashCodes.has(payment.method)) {
-          // Find the cash movement for this payment
           const movement = await tx.cashMovement.findFirst({
             where: {
               cashRegId: payment.cashRegId,
@@ -85,7 +114,6 @@ export async function DELETE(
           })
 
           if (movement) {
-            // Reverse cash register amount
             const reg = await tx.cashRegister.findUnique({ where: { id: payment.cashRegId } })
             if (reg) {
               await tx.cashRegister.update({
@@ -98,7 +126,7 @@ export async function DELETE(
         }
       }
 
-      // 3. Delete the payment record
+      // Delete the payment record
       await tx.clientPayment.delete({ where: { id: paymentId } })
     })
 
