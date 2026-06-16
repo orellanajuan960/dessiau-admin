@@ -176,6 +176,25 @@ export function ClientsTable() {
     return currencies.map(c => fmtWith(c.total, c.code || undefined)).join(' + ')
   }
 
+  // Helper: format receivable pending balance in product currencies
+  const fmtReceivableBalance = (sale: SaleRecord): string => {
+    const recv = sale.receivables?.[0]
+    if (!recv || recv.pendingBalance <= 0) return ''
+    const lineTotals = saleCurrencyTotals(sale)
+    const creditPayment = sale.payments.find(p => {
+      const pm = paymentMethods.find(m => m.code === p.method)
+      return pm?.isCredit
+    })
+    const creditAmount = creditPayment?.amount || 0
+    if (lineTotals.length > 0 && creditAmount > 0) {
+      const ratio = recv.pendingBalance / creditAmount
+      return lineTotals
+        .map(c => fmtWith(Math.round(c.total * ratio * 100) / 100, c.code || undefined))
+        .join(' + ')
+    }
+    return fmtWith(recv.pendingBalance, recv.currency?.code || baseCode || undefined)
+  }
+
   // Delete confirmation dialog
   const [deleteTarget, setDeleteTarget] = useState<Client | null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -985,7 +1004,7 @@ export function ClientsTable() {
                                   {isCredit ? (
                                     <Badge variant="outline" className="text-amber-600 border-amber-300">
                                       {sale.receivables[0]?.pendingBalance > 0
-                                        ? `Pendiente: ${fmtWith(sale.receivables[0].pendingBalance, sale.receivables[0].currency?.code || baseCode || undefined)}`
+                                        ? `Pendiente: ${fmtReceivableBalance(sale)}`
                                         : 'Credito'}
                                     </Badge>
                                   ) : (
@@ -1082,7 +1101,7 @@ export function ClientsTable() {
               </div>
               {detailSale.receivables.length > 0 && detailSale.receivables[0].pendingBalance > 0 && (
                 <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2 text-xs text-amber-700 dark:text-amber-400">
-                  Saldo pendiente: {fmtWith(detailSale.receivables[0].pendingBalance, detailSale.receivables[0].currency?.code || baseCode || undefined)}
+                  Saldo pendiente: {fmtReceivableBalance(detailSale)}
                   {detailSale.receivables[0].dueDate && ` — Vence: ${new Date(detailSale.receivables[0].dueDate).toLocaleDateString('es-VE')}`}
                 </div>
               )}

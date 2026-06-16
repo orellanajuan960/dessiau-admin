@@ -245,11 +245,25 @@ function fmtCreditAmount(cs: { creditAmountByCurrency: Record<string, number>; c
   return fmtWith(cs.creditAmount, cs.currencyCode || undefined)
 }
 
-/** Format pending balance — uses product currencies if no payments made yet */
+/** Format pending balance — derives from product currencies using payment ratio */
 function fmtPendingBalance(cs: { creditAmountByCurrency: Record<string, number>; creditAmount: number; pendingBalance: number; currencyCode: string }, fmtWith: (a: number, c?: string | null) => string): string {
-  if (Math.abs(cs.pendingBalance - cs.creditAmount) < 0.01) {
-    return fmtCreditAmount(cs, fmtWith)
+  const byCurrency = cs.creditAmountByCurrency || {}
+  const entries = Object.entries(byCurrency).filter(([, amt]) => amt > 0)
+
+  // If we have per-currency breakdown and a credit amount to compute ratio from
+  if (entries.length > 0 && cs.creditAmount > 0) {
+    const ratio = cs.pendingBalance / cs.creditAmount
+    if (Math.abs(ratio - 1) < 0.001) {
+      // No payments made yet — show original amounts
+      return entries.map(([code, amt]) => fmtWith(amt, code || undefined)).join(' + ')
+    }
+    // Partial payment — apply ratio to each currency
+    return entries
+      .map(([code, amt]) => fmtWith(Math.round(amt * ratio * 100) / 100, code || undefined))
+      .join(' + ')
   }
+
+  // Fallback: single currency or no breakdown
   return fmtWith(cs.pendingBalance, cs.currencyCode || undefined)
 }
 
