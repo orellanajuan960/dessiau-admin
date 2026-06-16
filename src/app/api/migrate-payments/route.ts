@@ -27,6 +27,7 @@ export async function POST() {
 
     // Get the base currency for default currencyId
     const baseCurrency = await db.currency.findFirst({ where: { isBase: true } })
+    const fallbackUser = await db.user.findFirst({ where: { active: true }, orderBy: { createdAt: 'asc' } })
 
     // ── 1. Recover from CashMovement records ──
     const movements = await db.cashMovement.findMany({
@@ -140,7 +141,7 @@ export async function POST() {
         await db.clientPayment.create({
           data: {
             clientId: recv.clientId,
-            userId: '', // Unknown for old records
+            userId: fallbackUser?.id || '',
             amount: paidAmount,
             method: 'transferencia', // Best guess for non-cash
             reference: null,
