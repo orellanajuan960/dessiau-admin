@@ -28,12 +28,12 @@ export async function POST(
 
     const result = await db.$transaction(async (tx) => {
       let totalAmount = 0
-      const saleLinesData = []
+      const saleLinesData: Array<{ productId: string; quantity: number; unitPrice: number; unitCost: number; lineTotal: number; lineProfit: number; currencyCode: string }> = []
 
       for (const line of lines) {
         const product = await tx.product.findUnique({
           where: { id: line.productId },
-          include: { inventories: { where: { branchId } } },
+          include: { inventories: { where: { branchId } }, currency: { select: { code: true } } },
         })
 
         if (!product) {
@@ -64,6 +64,7 @@ export async function POST(
           unitCost: product.costAvg,
           lineTotal,
           lineProfit: Math.round((unitPrice - product.costAvg) * line.quantity * 100) / 100,
+          currencyCode: product.currency?.code || '',
         })
       }
 

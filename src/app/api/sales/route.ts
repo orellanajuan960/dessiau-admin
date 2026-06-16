@@ -98,12 +98,19 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Fetch product costAvg for each line
+    // Fetch product costAvg and currency for each line
     const products = await db.product.findMany({
       where: { id: { in: productIds } },
-      select: { id: true, costAvg: true, price: true },
+      select: { id: true, costAvg: true, price: true, currencyId: true },
     })
     const productMap = new Map(products.map((p) => [p.id, p]))
+
+    // Fetch currency codes for products
+    const currencyIds = [...new Set(products.map((p) => p.currencyId).filter(Boolean))]
+    const currencies = currencyIds.length > 0
+      ? await db.currency.findMany({ where: { id: { in: currencyIds } }, select: { id: true, code: true } })
+      : []
+    const currencyMap = new Map(currencies.map((c) => [c.id, c.code]))
 
     // Calculate totals
     let total = 0
@@ -113,6 +120,7 @@ export async function POST(request: NextRequest) {
       const unitPrice = line.unitPrice || product?.price || 0
       const lineTotal = line.quantity * unitPrice
       const lineProfit = line.quantity * (unitPrice - unitCost)
+      const currencyCode = product?.currencyId ? (currencyMap.get(product.currencyId) || '') : ''
       total += lineTotal
       return {
         productId: line.productId,
@@ -121,6 +129,7 @@ export async function POST(request: NextRequest) {
         unitCost,
         lineTotal: Math.round(lineTotal * 100) / 100,
         lineProfit: Math.round(lineProfit * 100) / 100,
+        currencyCode,
       }
     })
 

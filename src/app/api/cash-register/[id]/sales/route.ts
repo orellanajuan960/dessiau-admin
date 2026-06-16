@@ -123,7 +123,8 @@ export async function GET(
       creditAmount: number
       pendingBalance: number
       currencyCode: string
-      products: Array<{ name: string; quantity: number; lineTotal: number; currencyCode: string }> = []
+      products: Array<{ name: string; quantity: number; lineTotal: number; currencyCode: string }>
+    }> = []
 
     const creditSaleIds: string[] = []
 
@@ -153,7 +154,8 @@ export async function GET(
           name: l.product?.name ?? 'Producto eliminado',
           quantity: l.quantity,
           lineTotal: roundTwo(l.lineTotal),
-          currencyCode: l.product?.currency?.code ?? '',
+          // Use SaleLine.currencyCode first (set at sale time), fallback to product's current currency
+          currencyCode: l.currencyCode || l.product?.currency?.code || '',
         })),
       })
     }
@@ -202,7 +204,8 @@ export async function GET(
         name: l.product?.name ?? 'Producto eliminado',
         quantity: l.quantity,
         lineTotal: roundTwo(l.lineTotal),
-        currencyCode: l.product?.currency?.code ?? '',
+        // Use SaleLine.currencyCode first (set at sale time), fallback to product's current currency
+        currencyCode: (l as any).currencyCode || l.product?.currency?.code || '',
       })),
     }))
 

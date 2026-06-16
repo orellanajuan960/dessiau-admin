@@ -238,14 +238,15 @@ model Sale {
 }
 
 model SaleLine {
-  id         String  @id @default(cuid())
-  saleId     String
-  productId  String
-  quantity   Float
-  unitPrice  Float
-  unitCost   Float
-  lineTotal  Float
-  lineProfit Float
+  id           String  @id @default(cuid())
+  saleId       String
+  productId    String
+  quantity     Float
+  unitPrice    Float
+  unitCost     Float
+  lineTotal    Float
+  lineProfit   Float
+  currencyCode String  @default("")
 
   sale    Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id])
