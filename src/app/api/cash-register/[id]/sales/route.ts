@@ -100,16 +100,7 @@ export async function GET(
       }
     }
 
-    const methodBreakdown = Array.from(methodMap.entries()).map(
-      ([, data]) => ({
-        method: data.method,
-        methodName: data.methodName,
-        isCredit: data.isCredit,
-        currencyCode: data.currencyCode,
-        count: data.count.size,
-        total: roundTwo(data.total),
-      })
-    )
+    // methodBreakdown is built after fetching movements (see step 5)
 
     // ---------------------------------------------------------------
     // 2) Build creditSales detail – with actual credit amount & currency
@@ -281,11 +272,47 @@ export async function GET(
       },
     })
 
-    // Get method names for display
-    const methodDefs = await getPaymentMethodsFromDB()
+    // Add manual entrada movements to the methodBreakdown map
+    for (const m of movements) {
+      if (m.type !== 'entrada') continue
+      const methodCode = m.method || ''
+      if (!methodCode) continue
+      const def = paymentMethodDefs.find(d => d.code === methodCode)
+        ?? FALLBACK_METHODS.find(d => d.code === methodCode)
+      const methodName = def?.name || methodCode
+      const isCredit = def?.isCredit ?? false
+      const currencyCode = m.currency?.code || ''
+
+      const key = `${methodCode}|${currencyCode}`
+      if (!methodMap.has(key)) {
+        methodMap.set(key, {
+          method: methodCode,
+          methodName,
+          isCredit,
+          currencyCode,
+          count: new Set<string>(),
+          total: 0,
+        })
+      }
+      const entry = methodMap.get(key)!
+      entry.count.add(`mov_${m.id}`)
+      entry.total += m.amount
+    }
+
+    // Now build the final methodBreakdown including movements
+    const methodBreakdown = Array.from(methodMap.entries()).map(
+      ([, data]) => ({
+        method: data.method,
+        methodName: data.methodName,
+        isCredit: data.isCredit,
+        currencyCode: data.currencyCode,
+        count: data.count.size,
+        total: roundTwo(data.total),
+      })
+    )
 
     const manualMovements = movements.map(m => {
-      const methodDef = methodDefs.find(d => d.code === m.method)
+      const methodDef = paymentMethodDefs.find(d => d.code === m.method)
         ?? FALLBACK_METHODS.find(d => d.code === m.method)
       return {
         id: m.id,
