@@ -2,67 +2,136 @@ import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveBranchId } from '@/lib/resolve-branch'
 
+// Timezone-aware date helpers
+const COUNTRY_TZ: Record<string, string> = {
+  VE: 'America/Caracas',
+  CO: 'America/Bogota',
+  CL: 'America/Santiago',
+  PE: 'America/Lima',
+  MX: 'America/Mexico_City',
+  AR: 'America/Argentina/Buenos_Aires',
+  EC: 'America/Guayaquil',
+  PA: 'America/Panama',
+  PY: 'America/Asuncion',
+  UY: 'America/Montevideo',
+  DO: 'America/Santo_Domingo',
+  GT: 'America/Guatemala',
+  ES: 'Europe/Madrid',
+  US: 'America/New_York',
+}
+
+/** Get the user's timezone string */
+async function getUserTz(): Promise<string> {
+  try {
+    const settings = await db.settings.findFirst({ select: { country: true } })
+    return COUNTRY_TZ[settings?.country || ''] || 'America/Caracas'
+  } catch {
+    return 'America/Caracas'
+  }
+}
+
+/** Get start-of-day in the user's timezone as a UTC Date */
+function startOfDayInTz(tz: string, date?: Date): Date {
+  const d = date || new Date()
+  // Get the date parts in the user's timezone
+  const dateStr = d.toLocaleDateString('en-US', { timeZone: tz })
+  const [m, day, y] = dateStr.split('/').map(Number)
+  // Reference point: noon UTC on that date (avoids DST edge cases)
+  const ref = new Date(Date.UTC(y, m - 1, day, 12, 0, 0))
+  // Compute offset: how TZ formats ref vs UTC
+  const utcStr = ref.toLocaleString('en-US', { timeZone: 'UTC' })
+  const tzStr = ref.toLocaleString('en-US', { timeZone: tz })
+  const offsetMs = new Date(tzStr).getTime() - new Date(utcStr).getTime()
+  // Midnight in TZ = ref - 12h - offset
+  return new Date(ref.getTime() - 12 * 3600 * 1000 - offsetMs)
+}
+
+/** Get end-of-day in the user's timezone as a UTC Date (23:59:59.999) */
+function endOfDayInTz(tz: string, date?: Date): Date {
+  const start = startOfDayInTz(tz, date)
+  return new Date(start.getTime() + 24 * 3600 * 1000 - 1)
+}
+
+/** Get the user's current date parts in their timezone */
+function datePartsInTz(tz: string) {
+  const now = new Date()
+  const dateStr = now.toLocaleDateString('en-US', { timeZone: tz })
+  const [m, day, y] = dateStr.split('/').map(Number)
+  return { year: y, month: m, day }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const branchId = await resolveBranchId(request)
     const { searchParams } = new URL(request.url)
-    const period = searchParams.get('period') || 'month' // today, week, month, year
+    const period = searchParams.get('period') || 'month'
 
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    const tz = await getUserTz()
+    const { year, month, day } = datePartsInTz(tz)
+
+    // Today boundaries in user's timezone (as UTC dates)
+    const todayStart = startOfDayInTz(tz)
+    const todayEnd = endOfDayInTz(tz)
 
     // Calculate date range based on period
     let startDate: Date
+    let endDate: Date
     let chartDays: number
     let chartLabel: string
 
     switch (period) {
       case 'today':
-        startDate = new Date(today)
+        startDate = todayStart
+        endDate = todayEnd
         chartDays = 1
         chartLabel = 'Hoy'
         break
-      case 'week':
-        startDate = new Date(today)
-        startDate.setDate(startDate.getDate() - 7)
+      case 'week': {
+        // Last 7 days including today (today - 6 days to today)
+        startDate = startOfDayInTz(tz, new Date(Date.UTC(year, month - 1, day - 6, 12, 0, 0)))
+        endDate = todayEnd
         chartDays = 7
         chartLabel = '7 días'
         break
-      case 'year':
-        startDate = new Date(today.getFullYear(), 0, 1)
-        chartDays = 12 // Show monthly for year view
-        chartLabel = '12 meses'
+      }
+      case 'year': {
+        // Full year: Jan 1 to Dec 31
+        startDate = startOfDayInTz(tz, new Date(Date.UTC(year, 0, 1, 12, 0, 0)))
+        endDate = endOfDayInTz(tz, new Date(Date.UTC(year, 11, 31, 12, 0, 0)))
+        chartDays = 12
+        chartLabel = `${year}`
         break
+      }
       case 'month':
-      default:
-        startDate = new Date(today.getFullYear(), today.getMonth(), 1)
-        chartDays = 7
-        chartLabel = '7 días'
+      default: {
+        // Full month: 1st to last day
+        const daysInMonth = new Date(year, month, 0).getDate()
+        startDate = startOfDayInTz(tz, new Date(Date.UTC(year, month - 1, 1, 12, 0, 0)))
+        endDate = endOfDayInTz(tz, new Date(Date.UTC(year, month - 1, daysInMonth, 12, 0, 0)))
+        chartDays = daysInMonth
+        const monthName = new Date(year, month - 1, 1).toLocaleDateString('es-VE', { month: 'long' })
+        chartLabel = monthName.charAt(0).toUpperCase() + monthName.slice(1)
         break
+      }
     }
 
     // Custom date range overrides period
     const customFrom = searchParams.get('from')
     const customTo = searchParams.get('to')
-    let endDate = new Date()
-    endDate.setHours(23, 59, 59, 999)
     let isCustom = false
     if (customFrom) {
-      startDate = new Date(customFrom)
-      startDate.setHours(0, 0, 0, 0)
+      startDate = new Date(customFrom + 'T00:00:00')
       isCustom = true
     }
     if (customTo) {
-      endDate = new Date(customTo)
-      endDate.setHours(23, 59, 59, 999)
+      endDate = new Date(customTo + 'T23:59:59')
       isCustom = true
     }
     if (isCustom) {
-      // Build a readable label for the custom range
       const fmt = (d: Date) => d.toLocaleDateString('es-VE', { day: 'numeric', month: 'short' })
       chartLabel = `${fmt(startDate)} – ${fmt(endDate)}`
       chartDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
-      chartDays = Math.min(chartDays, 365) // cap at 1 year
+      chartDays = Math.min(chartDays, 365)
     }
 
     // Sales in period
@@ -76,23 +145,24 @@ export async function GET(request: NextRequest) {
 
     // Adjustments in period (losses)
     const adjustmentsPeriod = await db.inventoryAdjustment.findMany({
-      where: { createdAt: { gte: startDate }, branchId },
+      where: { createdAt: { gte: startDate, lte: endDate }, branchId },
       include: { product: true },
     })
 
-    // Sales today (always for KPI)
+    // Sales today (always for KPI — uses timezone-aware boundaries)
     const salesToday = await db.sale.findMany({
-      where: { date: { gte: today }, status: 'completada', branchId },
+      where: { date: { gte: todayStart, lte: todayEnd }, status: 'completada', branchId },
     })
-    const expensesToday = await db.expense.findMany({ where: { date: { gte: today }, branchId, deletedAt: null } })
+    const expensesToday = await db.expense.findMany({ where: { date: { gte: todayStart, lte: todayEnd }, branchId, deletedAt: null } })
 
     // Sales this month (always for KPI)
-    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
+    const monthStartDate = startOfDayInTz(tz, new Date(Date.UTC(year, month - 1, 1, 12, 0, 0)))
+    const monthEndDate = endOfDayInTz(tz, new Date(Date.UTC(year, month - 1, new Date(year, month, 0).getDate(), 12, 0, 0)))
     const salesMonth = await db.sale.findMany({
-      where: { date: { gte: monthStart }, status: 'completada', branchId },
+      where: { date: { gte: monthStartDate, lte: monthEndDate }, status: 'completada', branchId },
       include: { lines: { include: { product: { select: { name: true } } } } },
     })
-    const expensesMonth = await db.expense.findMany({ where: { date: { gte: monthStart }, branchId, deletedAt: null } })
+    const expensesMonth = await db.expense.findMany({ where: { date: { gte: monthStartDate, lte: monthEndDate }, branchId, deletedAt: null } })
 
     // Build a map of product currency codes for the period (from SaleLine.currencyCode)
     const productCurrencyMap = new Map<string, string>()
