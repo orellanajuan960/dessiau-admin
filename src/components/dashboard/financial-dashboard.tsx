@@ -38,6 +38,7 @@ interface DashboardData {
     client: { name: string } | null
     user: { name: string }
     currency?: { code: string; symbol: string } | null
+    currencies?: { code: string; total: number }[]
   }>
   lowStockAlerts: Array<{ productName: string; stock: number; minStock: number }>
   overdueAlerts: Array<{ clientName: string; pendingBalance: number; dueDate: string }>
@@ -362,9 +363,19 @@ export function FinancialDashboard() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-bold text-primary dark:text-primary">
-                        {fmtWith(sale.total, sale.currency?.code || undefined)}
-                      </p>
+                      {sale.currencies && sale.currencies.length > 0 ? (
+                        <div className="flex flex-col items-end gap-0.5">
+                          {sale.currencies.map((c) => (
+                            <p key={c.code} className="text-sm font-bold text-primary dark:text-primary">
+                              {fmtWith(c.total, c.code || undefined)}
+                            </p>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm font-bold text-primary dark:text-primary">
+                          {fmtWith(sale.total, sale.currency?.code || undefined)}
+                        </p>
+                      )}
                       <Badge variant="outline" className="text-[10px]">
                         {sale.status}
                       </Badge>

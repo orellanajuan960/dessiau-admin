@@ -94,13 +94,12 @@ export async function GET(request: NextRequest) {
     })
     const expensesMonth = await db.expense.findMany({ where: { date: { gte: monthStart }, branchId, deletedAt: null } })
 
-    // Build a map of product currency codes for the period
+    // Build a map of product currency codes for the period (from SaleLine.currencyCode)
     const productCurrencyMap = new Map<string, string>()
     salesPeriod.forEach(sale => {
       sale.lines.forEach(line => {
         if (line.productId && !productCurrencyMap.has(line.productId)) {
-          // Use the sale's currency code as proxy for the line's currency
-          productCurrencyMap.set(line.productId, sale.currency?.code || '')
+          productCurrencyMap.set(line.productId, line.currencyCode || '')
         }
       })
     })
@@ -135,25 +134,27 @@ export async function GET(request: NextRequest) {
     const utilidadNetaPeriodo = utilidadBrutaPeriodo - gastosPeriodo - perdidasPeriodo
 
     // Top 5 products by revenue (from period sales)
-    const productRevenue: Record<string, { name: string; revenue: number; qty: number; currencyCode: string }> = {}
+    // Each product keeps its own currency; if a product appears in multiple
+    // currencies, we split it into separate entries (code suffix).
+    const productRevenueRaw: Record<string, { name: string; revenue: number; qty: number; currencyCode: string }> = {}
     salesPeriod.forEach(sale => {
-      const saleCurrencyCode = (sale as any).currency?.code || ''
       sale.lines.forEach(line => {
-        const key = line.productId
-        if (!productRevenue[key]) {
-          productRevenue[key] = { name: line.product?.name || 'Producto', revenue: 0, qty: 0, currencyCode: saleCurrencyCode }
+        const code = line.currencyCode || ''
+        // Use productId + currencyCode as key so same product in different currencies stays separate
+        const key = `${line.productId}|${code}`
+        if (!productRevenueRaw[key]) {
+          productRevenueRaw[key] = { name: line.product?.name || 'Producto', revenue: 0, qty: 0, currencyCode: code }
         }
-        productRevenue[key].revenue += line.lineTotal
-        productRevenue[key].qty += line.quantity
-        if (saleCurrencyCode) productRevenue[key].currencyCode = saleCurrencyCode
+        productRevenueRaw[key].revenue += line.lineTotal
+        productRevenueRaw[key].qty += line.quantity
       })
     })
-    const topProducts = Object.values(productRevenue)
+    const topProducts = Object.values(productRevenueRaw)
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 5)
 
-    // Last 10 sales in period
-    const recentSales = await db.sale.findMany({
+    // Last 10 sales in period — include line currencyCode for correct display
+    const recentSalesRaw = await db.sale.findMany({
       where: { date: { gte: startDate, lte: endDate }, status: 'completada', branchId },
       include: {
         client: { select: { name: true } },
@@ -163,6 +164,35 @@ export async function GET(request: NextRequest) {
       },
       orderBy: { date: 'desc' },
       take: 10,
+    })
+
+    // Build recentSales with per-currency totals derived from lines
+    const recentSales = recentSalesRaw.map(sale => {
+      // Compute total per currency from lines
+      const totalsByCurrency: Record<string, number> = {}
+      sale.lines.forEach(line => {
+        const code = line.currencyCode || ''
+        if (!code) return
+        totalsByCurrency[code] = (totalsByCurrency[code] || 0) + line.lineTotal
+      })
+      const currencies = Object.entries(totalsByCurrency).map(([code, total]) => ({
+        code,
+        total: Math.round(total * 100) / 100,
+      }))
+      // Derive primary currency: if all lines share one currency, use it
+      const uniqueCodes = new Set(sale.lines.map(l => l.currencyCode).filter(Boolean))
+      const primaryCurrencyCode = uniqueCodes.size === 1 ? [...uniqueCodes][0] : (sale.currency?.code || '')
+
+      return {
+        id: sale.id,
+        date: sale.date.toISOString(),
+        total: sale.total,
+        status: sale.status,
+        client: sale.client ? { name: sale.client.name } : null,
+        user: { name: sale.user.name },
+        currency: sale.currency ? { code: primaryCurrencyCode, symbol: sale.currency.symbol } : null,
+        currencies, // per-currency breakdown
+      }
     })
 
     // Alerts: low stock
