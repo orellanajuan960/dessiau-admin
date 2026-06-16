@@ -33,7 +33,12 @@ export async function DELETE(
     try {
       appliedDetails = JSON.parse(payment.appliedDetails || '[]')
     } catch {
-      return NextResponse.json({ error: 'Datos de pago corruptos, no se puede eliminar' }, { status: 500 })
+      // If appliedDetails is corrupt but amount > 0, we can still try a best-effort reverse
+      if (payment.amount > 0) {
+        return NextResponse.json({
+          error: 'Datos de pago corruptos. Este cobro fue registrado antes del sistema de trazabilidad. Contacta soporte para revertirlo manualmente.',
+        }, { status: 400 })
+      }
     }
 
     await db.$transaction(async (tx) => {

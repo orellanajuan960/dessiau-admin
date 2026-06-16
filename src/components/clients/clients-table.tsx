@@ -254,8 +254,17 @@ export function ClientsTable() {
   const getPaymentMethodName = (code: string): string => {
     const pm = paymentMethods.find(m => m.code === code)
     if (pm) return pm.name
-    // Also check full list including credit methods
-    return code.charAt(0).toUpperCase() + code.slice(1)
+    // Common fallback names for legacy/migrated records
+    const fallbacks: Record<string, string> = {
+      efectivo: 'Efectivo',
+      transferencia: 'Transferencia',
+      pago_movil: 'Pago Movil',
+      punto_de_venta: 'Punto de Venta',
+      zelle: 'Zelle',
+     debito: 'Tarjeta Debito',
+      credito: 'Tarjeta Credito',
+    }
+    return fallbacks[code] || code.charAt(0).toUpperCase() + code.slice(1)
   }
 
   // Edit client
@@ -548,8 +557,13 @@ export function ClientsTable() {
     }
     setPaying(true)
     try {
+      // Send display amount (as user sees it) for correct storage in ClientPayment
+      const displayAmount = parseFloat(paymentAmount) || 0
+      const displayCurrencyCode = isLocalMethod ? (baseCode || 'VES') : (referenceCurrency || 'USD')
       await api.post(`/api/clients/${paymentClient.id}/payment`, {
         amount: paymentAmountInRef,
+        displayAmount,
+        displayCurrencyCode,
         method: paymentMethod,
         reference: paymentReference || undefined,
         cashRegId: openCashRegId || undefined,

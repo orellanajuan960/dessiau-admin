@@ -17,7 +17,7 @@ export async function POST(
   try {
     const { id: clientId } = await params
     const body = await request.json()
-    const { amount, method, reference, cashRegId, userId, currencyId } = body
+    const { amount, displayAmount, displayCurrencyCode, method, reference, cashRegId, userId, currencyId } = body
 
     if (!amount || amount <= 0) {
       return NextResponse.json({ error: 'El monto debe ser mayor a 0' }, { status: 400 })
@@ -110,15 +110,22 @@ export async function POST(
       }
 
       // Create ClientPayment record for traceability (reversible)
+      // Resolve the display currency ID for correct symbol display
+      let effectiveCurrencyId = currencyId || ''
+      if (displayCurrencyCode) {
+        const displayCurrency = await tx.currency.findFirst({ where: { code: displayCurrencyCode } })
+        if (displayCurrency) effectiveCurrencyId = displayCurrency.id
+      }
+
       await tx.clientPayment.create({
         data: {
           clientId,
           userId,
-          amount: Math.round(amount * 100) / 100,
+          amount: Math.round((displayAmount || amount) * 100) / 100,
           method,
           reference: reference || null,
           cashRegId: cashRegId || null,
-          currencyId: currencyId || '',
+          currencyId: effectiveCurrencyId,
           appliedDetails: JSON.stringify(updated),
         },
       })
