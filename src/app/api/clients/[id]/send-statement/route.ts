@@ -15,7 +15,7 @@ export async function POST(
         where: { id: clientId },
         include: {
           receivables: {
-            where: { status: 'pendiente' },
+            where: { status: { in: ['pendiente', 'parcial'] } },
             include: {
               sale: {
                 include: {

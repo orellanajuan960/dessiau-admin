@@ -287,7 +287,7 @@ export async function GET(request: NextRequest) {
 
     // Alerts: overdue accounts receivable
     const overdueReceivables = await db.accountReceivable.findMany({
-      where: { status: 'pendiente', dueDate: { lt: new Date() } },
+      where: { status: { in: ['pendiente', 'parcial'] }, dueDate: { lt: new Date() } },
       include: { client: { select: { name: true } } },
     })
     const overdueAlerts = overdueReceivables.map(r => ({
@@ -298,7 +298,7 @@ export async function GET(request: NextRequest) {
 
     // Alerts: overdue accounts payable (supplier debts)
     const overduePayables = await db.accountPayable.findMany({
-      where: { status: 'pendiente', dueDate: { lt: new Date() } },
+      where: { status: { in: ['pendiente', 'parcial'] }, dueDate: { lt: new Date() } },
       include: { supplier: { select: { name: true } } },
     })
     const overduePayableAlerts = overduePayables.map(p => ({

@@ -15,7 +15,7 @@ export async function GET(
         where: { id: clientId },
         include: {
           receivables: {
-            where: { status: 'pendiente' },
+            where: { status: { in: ['pendiente', 'parcial'] } },
             include: {
               sale: {
                 include: {

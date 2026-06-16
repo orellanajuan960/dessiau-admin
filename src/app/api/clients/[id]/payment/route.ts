@@ -27,7 +27,7 @@ export async function POST(
     const receivables = await db.accountReceivable.findMany({
       where: {
         clientId,
-        status: 'pendiente',
+        status: { in: ['pendiente', 'parcial'] },
       },
       orderBy: { id: 'asc' },
     })

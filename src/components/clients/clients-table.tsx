@@ -973,7 +973,7 @@ export function ClientsTable() {
                             const isCredit = sale.payments.some(p => {
                               const pm = paymentMethods.find(m => m.code === p.method)
                               return pm?.isCredit
-                            }) || sale.receivables.some(r => r.status === 'pendiente')
+                            }) || sale.receivables.some(r => r.status === 'pendiente' || r.status === 'parcial')
                             return (
                               <TableRow key={sale.id}>
                                 <TableCell className="text-xs font-mono whitespace-nowrap">

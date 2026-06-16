@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
       include: {
         _count: { select: { sales: true } },
         receivables: {
-          where: { status: 'pendiente' },
+          where: { status: { in: ['pendiente', 'parcial'] } },
           select: {
             amount: true,
             pendingBalance: true,
