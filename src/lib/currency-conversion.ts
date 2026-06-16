@@ -1,6 +1,9 @@
 /**
  * Convert an item amount from its own currency to the reference currency.
  *
+ * IMPORTANT: Returns FULL precision (no rounding) to avoid round-trip loss
+ * when converting VES→USD→VES. Callers should format for display as needed.
+ *
  * Scenarios:
  * - Item in reference currency (e.g. USD) → no conversion
  * - Item in local/base currency (e.g. VES) → divide by exchangeRate
@@ -27,37 +30,60 @@ export function convertToRefCurrency(
 
   // Item is in local currency (VES, COP, etc.) — convert local → ref
   if (itemCurrencyCode === localCode) {
-    return Math.round((amount / exchangeRate) * 100) / 100
+    return amount / exchangeRate
   }
 
   // Item is in EUR, ref is USD
   if (itemCurrencyCode === 'EUR' && refCode === 'USD') {
     if (eurRate > 0 && usdRate > 0) {
-      // 1 EUR = eurRate local, 1 USD = usdRate local
-      // So 1 EUR = (eurRate / usdRate) USD
-      return Math.round(amount * (eurRate / usdRate) * 100) / 100
+      return amount * (eurRate / usdRate)
     }
-    // Fallback: treat EUR ≈ 1.17 USD
-    return Math.round(amount * 1.17 * 100) / 100
+    return amount * 1.17
   }
 
   // Item is in USD, ref is EUR
   if (itemCurrencyCode === 'USD' && refCode === 'EUR') {
     if (eurRate > 0 && usdRate > 0) {
-      return Math.round(amount * (usdRate / eurRate) * 100) / 100
+      return amount * (usdRate / eurRate)
     }
-    return Math.round((amount / 1.17) * 100) / 100
+    return amount / 1.17
   }
 
   // For any other currency, assume it's a local-like currency
-  return Math.round((amount / exchangeRate) * 100) / 100
+  return amount / exchangeRate
+}
+
+/**
+ * Format a number with full significant precision.
+ * Shows up to 6 decimal places but removes unnecessary trailing zeros
+ * while keeping at least 2 decimal places.
+ *
+ * Examples:
+ *   14.665549  → "14.665549"
+ *   14.670000  → "14.67"
+ *   10.000000  → "10.00"
+ *   14.665500  → "14.6655"
+ */
+export function formatRefPrecision(n: number): string {
+  const s = n.toFixed(6)
+  const dotIdx = s.indexOf('.')
+  if (dotIdx === -1) return s + '.00'
+  let dec = s.slice(dotIdx + 1)
+  // Keep at least 2 decimals, strip trailing zeros beyond that
+  while (dec.length > 2 && dec.endsWith('0')) {
+    dec = dec.slice(0, -1)
+  }
+  return s.slice(0, dotIdx + 1) + dec
 }
 
 /**
  * Calculate cart totals with per-item currency conversion.
  * Returns { subtotalRef, subtotalLocal } where:
- * - subtotalRef = total in reference currency (USD or EUR)
- * - subtotalLocal = total in local currency (VES, COP, etc.)
+ * - subtotalRef = total in reference currency (USD or EUR) — full precision
+ * - subtotalLocal = total in local currency (VES, COP, etc.) — full precision
+ *
+ * IMPORTANT: Both values return full precision to avoid round-trip loss.
+ * Round only for final display/payment as needed.
  */
 export function calcCartTotals(items: Array<{
   lineTotal: number
@@ -76,6 +102,7 @@ export function calcCartTotals(items: Array<{
   }
 
   let ref = 0
+  let local = 0
   items.forEach((item) => {
     const itemInRef = convertToRefCurrency(
       item.lineTotal,
@@ -87,7 +114,15 @@ export function calcCartTotals(items: Array<{
       options.usdRate,
     )
     ref += itemInRef
+
+    // For local total: sum directly if item is already in local currency
+    // to avoid round-trip precision loss (local → ref → local)
+    if (item.currencyCode === options.localCode || !item.currencyCode) {
+      local += item.lineTotal
+    } else {
+      local += itemInRef * options.exchangeRate
+    }
   })
-  ref = Math.round(ref * 100) / 100
-  return { subtotalRef: ref, subtotalLocal: Math.round(ref * options.exchangeRate * 100) / 100 }
+
+  return { subtotalRef: ref, subtotalLocal: local }
 }

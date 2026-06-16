@@ -41,7 +41,7 @@ import {
 import { toast } from 'sonner'
 import { useCurrency } from '@/hooks/use-currency'
 import { FALLBACK_METHODS } from '@/lib/payment-methods'
-import { calcCartTotals } from '@/lib/currency-conversion'
+import { calcCartTotals, formatRefPrecision } from '@/lib/currency-conversion'
 import { getCurrencyForCountry } from '@/lib/country-currency'
 
 interface PosPaymentModalProps {
@@ -128,8 +128,8 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   const subtotal = subtotalRef
   const ivaAmountLocal = ivaEnabled ? Math.round(subtotalLocal * (ivaRate / 100) * 100) / 100 : 0
   const totalLocal = Math.round((subtotalLocal + ivaAmountLocal) * 100) / 100
-  // Total in reference currency = (subtotal local + iva local) / exchangeRate
-  const total = exchangeRate > 0 ? Math.round((totalLocal / exchangeRate) * 100) / 100 : subtotal
+  // Total in reference currency = (subtotal local + iva local) / exchangeRate — full precision
+  const total = exchangeRate > 0 ? (totalLocal / exchangeRate) : subtotal
   const { sym: currencySymbol, baseSym, refCode, fmt, fmtBase, multiEnabled } = useCurrency()
 
   // Only enabled methods
@@ -166,7 +166,8 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
     if (isLocalMethod) {
       setAmount(totalLocal.toFixed(2))
     } else {
-      setAmount(total.toFixed(2))
+      // Show full precision for reference currency (USD)
+      setAmount(formatRefPrecision(total))
     }
   }, [method, isLocalMethod, totalLocal, total])
 
@@ -236,7 +237,8 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   const amountInRefCurrency = useMemo(() => {
     const parsed = parseFloat(amount) || 0
     if (isLocalMethod) {
-      return exchangeRate > 0 ? Math.round((parsed / exchangeRate) * 100) / 100 : parsed
+      // Convert local (VES) to ref (USD) — full precision, no rounding
+      return exchangeRate > 0 ? (parsed / exchangeRate) : parsed
     }
     return parsed
   }, [amount, isLocalMethod, exchangeRate])
@@ -324,7 +326,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
         <DialogHeader>
           <DialogTitle>Cobrar</DialogTitle>
           <DialogDescription>
-            Total: {currencySymbol}{total.toFixed(2)}
+            Total: {currencySymbol}{formatRefPrecision(total)}
             {multiEnabled && <span className="ml-2">· {baseSym} {totalLocal.toFixed(2)}</span>}
           </DialogDescription>
         </DialogHeader>
@@ -523,12 +525,12 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
               />
               {multiEnabled && isLocalMethod && (
                 <p className="text-xs text-muted-foreground">
-                  Equivale a {currencySymbol}{amountInRefCurrency.toFixed(2)} (Tasa: {exchangeRate.toFixed(2)} {baseSym}/{refCode})
+                  Equivale a {currencySymbol}{formatRefPrecision(amountInRefCurrency)} (Tasa: {exchangeRate.toFixed(2)} {baseSym}/{refCode})
                 </p>
               )}
               {changeAmount > 0 && (
                 <p className="text-sm text-primary font-medium">
-                  Cambio: {changeLabel}{changeAmount.toFixed(2)}
+                  Cambio: {changeLabel}{isLocalMethod ? changeAmount.toFixed(2) : formatRefPrecision(changeAmount)}
                 </p>
               )}
             </div>
@@ -559,7 +561,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
                   Procesando...
                 </>
               ) : (
-                <>Confirmar Pago {isLocalMethod ? baseSym : currencySymbol}{parseFloat(amount || '0').toFixed(2)}</>
+                <>Confirmar Pago {isLocalMethod ? `${baseSym}${parseFloat(amount || '0').toFixed(2)}` : `${currencySymbol}${parseFloat(amount || '0')}`}</>
               )}
             </Button>
           </div>

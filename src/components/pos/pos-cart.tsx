@@ -20,7 +20,7 @@ import {
 import { toast } from 'sonner'
 import { useCurrency } from '@/hooks/use-currency'
 import { getCurrencyForCountry } from '@/lib/country-currency'
-import { convertToRefCurrency, calcCartTotals } from '@/lib/currency-conversion'
+import { convertToRefCurrency, calcCartTotals, formatRefPrecision } from '@/lib/currency-conversion'
 
 interface PosCartProps {
   onPayment: () => void
@@ -93,9 +93,7 @@ export function PosCart({ onPayment }: PosCartProps) {
         local += itemInRef * exchangeRate
       }
     })
-    // Round to avoid floating point issues
-    ref = Math.round(ref * 100) / 100
-    local = Math.round(local * 100) / 100
+    // Keep full precision to avoid round-trip loss
     return { subtotalRef: ref, subtotalLocal: local }
   }, [items, multiEnabled, exchangeRate, referenceCurrency, localCode, eurRate, usdRate, getTotal])
 
@@ -266,7 +264,7 @@ export function PosCart({ onPayment }: PosCartProps) {
                       {multiEnabled ? (
                         <>
                           <span className="text-sm font-bold text-primary dark:text-primary">
-                            {refSym}{itemInRef.toFixed(2)}
+                            {refSym}{formatRefPrecision(itemInRef)}
                           </span>
                           <p className="text-[10px] text-muted-foreground">
                             {baseSym} {itemInLocal.toFixed(2)}
@@ -294,7 +292,7 @@ export function PosCart({ onPayment }: PosCartProps) {
               <div className="flex items-center justify-between">
                 <span className="text-xs text-muted-foreground">Subtotal ({referenceCurrency || 'USD'})</span>
                 <span className="text-sm font-medium">
-                  {refSym}{subtotalRef.toFixed(2)}
+                  {refSym}{formatRefPrecision(subtotalRef)}
                 </span>
               </div>
               {ivaEnabled && (
