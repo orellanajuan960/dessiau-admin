@@ -37,19 +37,44 @@ export async function GET(request: NextRequest) {
         _count: { select: { sales: true } },
         receivables: {
           where: { status: 'pendiente' },
-          select: { pendingBalance: true, currencyId: true, currency: { select: { code: true } } },
+          select: {
+            pendingBalance: true,
+            currencyId: true,
+            currency: { select: { code: true } },
+            sale: {
+              select: {
+                lines: {
+                  select: {
+                    currencyCode: true,
+                    product: { select: { currencyId: true, currency: { select: { code: true } } } } },
+                },
+              },
+            },
+          },
         },
       },
       orderBy: { name: 'asc' },
     })
 
     // Compute pending balance per currency for each client
+    // Derive currency from sale lines (not from receivable.currencyId which may be wrong)
     const clientsWithBalance = clients.map(client => {
       const totalPendingBalance = client.receivables.reduce((sum, r) => sum + r.pendingBalance, 0)
       // Build a map of currencyCode -> total pending
       const balanceByCurrency: Record<string, number> = {}
       for (const r of client.receivables) {
-        const code = r.currency?.code || ''
+        // Derive currency from sale lines
+        const lines = (r as any).sale?.lines || []
+        const lineCodes = new Set<string>()
+        for (const line of lines) {
+          const code = line.currencyCode || line.product?.currency?.code || ''
+          if (code) lineCodes.add(code)
+        }
+        // If all lines share one currency, use it; otherwise fall back to receivable's currency
+        const derivedCode = lineCodes.size === 1
+          ? [...lineCodes][0]
+          : (lineCodes.size > 0 ? [...lineCodes][0] : (r.currency?.code || ''))
+        const code = derivedCode || ''
         balanceByCurrency[code] = (balanceByCurrency[code] || 0) + r.pendingBalance
       }
       // Round each currency balance
