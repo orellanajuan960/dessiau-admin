@@ -250,7 +250,7 @@ export async function POST(request: NextRequest) {
               amount: cp.amount,
               pendingBalance: cp.amount,
               status: 'pendiente',
-              currencyId: refCurrency?.id || '',
+              currencyId: cp.currencyId || refCurrency?.id || '',
               dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
             },
           })

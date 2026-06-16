@@ -91,6 +91,16 @@ export async function POST(
       const dueDate = new Date()
       dueDate.setDate(dueDate.getDate() + 30)
 
+      // Determine the primary currency for the receivable (from first product)
+      let receivableCurrencyId = ''
+      if (saleLinesData.length > 0) {
+        const firstProduct = await tx.product.findUnique({
+          where: { id: saleLinesData[0].productId },
+          select: { currencyId: true },
+        })
+        receivableCurrencyId = firstProduct?.currencyId || ''
+      }
+
       await tx.accountReceivable.create({
         data: {
           clientId,
@@ -99,6 +109,7 @@ export async function POST(
           pendingBalance: totalAmount,
           dueDate,
           status: 'pendiente',
+          currencyId: receivableCurrencyId,
         },
       })
 
