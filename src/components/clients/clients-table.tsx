@@ -43,7 +43,7 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart, Eye, EyeOff, AlertTriangle } from 'lucide-react'
+import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart, Eye, EyeOff, AlertTriangle, CircleDollarSign } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSetting } from '@/stores/use-app-store'
 import { useCurrency } from '@/hooks/use-currency'
@@ -102,6 +102,16 @@ interface DispatchLine {
   currencyCode: string
 }
 
+interface ClientPaymentRecord {
+  id: string
+  amount: number
+  method: string
+  reference: string | null
+  createdAt: string
+  user: { name: string }
+  currency: { code: string; symbol: string } | null
+}
+
 export function ClientsTable() {
   const { user, permissions } = useAuth()
   const canManage = permissions.canManageClients
@@ -126,6 +136,12 @@ export function ClientsTable() {
 
   // Sale lines detail modal
   const [detailSale, setDetailSale] = useState<SaleRecord | null>(null)
+
+  // Client payments list
+  const [clientPayments, setClientPayments] = useState<ClientPaymentRecord[]>([])
+  const [loadingPayments, setLoadingPayments] = useState(false)
+  const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null)
+  const [deletePaymentTarget, setDeletePaymentTarget] = useState<ClientPaymentRecord | null>(null)
 
   // Statement email
   const [sendingStatement, setSendingStatement] = useState<string | null>(null)
@@ -212,6 +228,34 @@ export function ClientsTable() {
       setDeleting(false)
       setDeleteTarget(null)
     }
+  }
+
+  // Delete a client payment (reverse it)
+  const handleDeletePayment = async () => {
+    if (!historyClient || !deletePaymentTarget) return
+    setDeletingPaymentId(deletePaymentTarget.id)
+    try {
+      await api.del(`/api/clients/${historyClient.id}/payments/${deletePaymentTarget.id}`)
+      toast.success('Cobro eliminado. Saldos restaurados.')
+      // Refresh payments list and clients
+      const pData = await api.get<{ payments: ClientPaymentRecord[] }>(`/api/clients/${historyClient.id}/payments`)
+      setClientPayments(pData.payments)
+      fetchClients()
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Error al eliminar cobro'
+      toast.error(msg)
+    } finally {
+      setDeletingPaymentId(null)
+      setDeletePaymentTarget(null)
+    }
+  }
+
+  // Helper: get payment method display name
+  const getPaymentMethodName = (code: string): string => {
+    const pm = paymentMethods.find(m => m.code === code)
+    if (pm) return pm.name
+    // Also check full list including credit methods
+    return code.charAt(0).toUpperCase() + code.slice(1)
   }
 
   // Edit client
@@ -408,6 +452,8 @@ export function ClientsTable() {
     setHistoryClient(client)
     setShowHistoryDialog(true)
     setLoadingHistory(true)
+    setLoadingPayments(true)
+    setClientPayments([])
     try {
       const data = await api.get<{ sales: SaleRecord[] }>(`/api/clients/${client.id}/sales`)
       setSales(data.sales)
@@ -415,6 +461,14 @@ export function ClientsTable() {
       toast.error('Error al cargar historial')
     } finally {
       setLoadingHistory(false)
+    }
+    try {
+      const pData = await api.get<{ payments: ClientPaymentRecord[] }>(`/api/clients/${client.id}/payments`)
+      setClientPayments(pData.payments)
+    } catch {
+      // Silently fail — payments section is secondary
+    } finally {
+      setLoadingPayments(false)
     }
   }
 
@@ -1047,6 +1101,78 @@ export function ClientsTable() {
                   )}
                 </CardContent>
               </Card>
+
+              {/* Payments History */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <CircleDollarSign className="h-4 w-4 text-green-600" />
+                    Pagos Realizados
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {loadingPayments ? (
+                    <div className="h-24 rounded-lg bg-muted animate-pulse m-4" />
+                  ) : clientPayments.length === 0 ? (
+                    <p className="text-sm text-muted-foreground p-4 text-center">Sin cobros registrados</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Fecha</TableHead>
+                            <TableHead>Monto</TableHead>
+                            <TableHead className="hidden sm:table-cell">Metodo</TableHead>
+                            <TableHead className="hidden md:table-cell">Referencia</TableHead>
+                            <TableHead className="hidden lg:table-cell">Registrado por</TableHead>
+                            <TableHead className="w-10"></TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {clientPayments.map((p) => (
+                            <TableRow key={p.id}>
+                              <TableCell className="text-xs whitespace-nowrap">
+                                {new Date(p.createdAt).toLocaleDateString('es-VE')}
+                                <br />
+                                <span className="text-muted-foreground">
+                                  {new Date(p.createdAt).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-sm font-semibold text-green-600 whitespace-nowrap">
+                                {fmtWith(p.amount, p.currency?.code || undefined)}
+                              </TableCell>
+                              <TableCell className="text-xs hidden sm:table-cell">
+                                {getPaymentMethodName(p.method)}
+                              </TableCell>
+                              <TableCell className="text-xs hidden md:table-cell font-mono">
+                                {p.reference || '—'}
+                              </TableCell>
+                              <TableCell className="text-xs hidden lg:table-cell text-muted-foreground">
+                                {p.user?.name || '—'}
+                              </TableCell>
+                              <TableCell>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                  title="Eliminar cobro"
+                                  disabled={deletingPaymentId === p.id}
+                                  onClick={() => setDeletePaymentTarget(p)}
+                                >
+                                  {deletingPaymentId === p.id
+                                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    : <Trash2 className="h-3.5 w-3.5" />
+                                  }
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </div>
           )}
         </DialogContent>
@@ -1217,6 +1343,24 @@ export function ClientsTable() {
             <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
             <AlertDialogAction variant="destructive" onClick={handleConfirmDelete} disabled={deleting}>
               {deleting ? 'Eliminando...' : 'Eliminar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Payment Confirmation Dialog */}
+      <AlertDialog open={!!deletePaymentTarget} onOpenChange={(open) => { if (!open) setDeletePaymentTarget(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar Cobro</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se eliminara el cobro de {deletePaymentTarget ? fmtWith(deletePaymentTarget.amount, deletePaymentTarget.currency?.code || undefined) : ''} ({getPaymentMethodName(deletePaymentTarget?.method || '')}){deletePaymentTarget?.reference ? ` con referencia ${deletePaymentTarget.reference}` : ''}. Los saldos del cliente se restauraran automaticamente. Esta accion no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={!!deletingPaymentId}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={handleDeletePayment} disabled={!!deletingPaymentId}>
+              {deletingPaymentId ? 'Eliminando...' : 'Eliminar Cobro'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

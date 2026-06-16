@@ -3,6 +3,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { formatCurrency } from '@/lib/currency'
 import { getPaymentMethodsFromDB, FALLBACK_METHODS } from '@/lib/payment-methods'
 
+interface AppliedDetail {
+  receivableId: string
+  amountApplied: number
+  previousBalance: number
+  newBalance: number
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -44,12 +51,14 @@ export async function POST(
     // Distribute payment across receivables (FIFO)
     let remaining = amount
     const results = await db.$transaction(async (tx) => {
-      const updated: Array<{ receivableId: string; amountApplied: number; newBalance: number }> = []
+      const updated: AppliedDetail[] = []
+      let cashMovementId: string | null = null
 
       for (const receivable of receivables) {
         if (remaining <= 0) break
 
         const applied = Math.min(remaining, receivable.pendingBalance)
+        const previousBalance = receivable.pendingBalance
         const newBalance = Math.round((receivable.pendingBalance - applied) * 100) / 100
         const newStatus = newBalance <= 0 ? 'pagada' : 'parcial'
 
@@ -64,6 +73,7 @@ export async function POST(
         updated.push({
           receivableId: receivable.id,
           amountApplied: Math.round(applied * 100) / 100,
+          previousBalance: Math.round(previousBalance * 100) / 100,
           newBalance,
         })
 
@@ -76,7 +86,7 @@ export async function POST(
       if (cashRegId && cashCodes.has(method)) {
         const effectiveCurrencyId = currencyId || (await tx.currency.findFirst({ where: { isBase: true } }))?.id
         if (effectiveCurrencyId) {
-          await tx.cashMovement.create({
+          const movement = await tx.cashMovement.create({
             data: {
               cashRegId,
               userId,
@@ -86,6 +96,7 @@ export async function POST(
               currencyId: effectiveCurrencyId,
             },
           })
+          cashMovementId = movement.id
 
           // Update cash register current amount
           const reg = await tx.cashRegister.findUnique({ where: { id: cashRegId } })
@@ -97,6 +108,20 @@ export async function POST(
           }
         }
       }
+
+      // Create ClientPayment record for traceability (reversible)
+      await tx.clientPayment.create({
+        data: {
+          clientId,
+          userId,
+          amount: Math.round(amount * 100) / 100,
+          method,
+          reference: reference || null,
+          cashRegId: cashRegId || null,
+          currencyId: currencyId || '',
+          appliedDetails: JSON.stringify(updated),
+        },
+      })
 
       return updated
     })

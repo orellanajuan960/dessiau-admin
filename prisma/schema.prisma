@@ -26,6 +26,7 @@ model User {
   expenses          Expense[]
   notifications     Notification[]
   supplierPayments  SupplierPayment[]
+  clientPayments    ClientPayment[]
   audits            CashAudit[]
   auditLogs         AuditLog[]
   branch            Branch?           @relation(fields: [branchId], references: [id])
@@ -44,6 +45,7 @@ model Client {
 
   sales        Sale[]
   receivables  AccountReceivable[]
+  payments     ClientPayment[]
   notifications Notification[]
 }
 
@@ -83,6 +85,7 @@ model Currency {
   cashRegisters     CashRegister[]
   receivables       AccountReceivable[]
   payables          AccountPayable[]
+  clientPayments    ClientPayment[]
 }
 
 model ExchangeRate {
@@ -280,9 +283,10 @@ model CashRegister {
   branch    Branch         @relation(fields: [branchId], references: [id])
   currency  Currency?      @relation(fields: [currencyId], references: [id])
   sales     Sale[]
-  movements CashMovement[]
-  cuts      CashCut[]
-  audits    CashAudit[]
+  movements      CashMovement[]
+  clientPayments ClientPayment[]
+  cuts           CashCut[]
+  audits         CashAudit[]
 }
 
 model CashMovement {
@@ -495,4 +499,26 @@ model AuditLog {
   @@index([entity])
   @@index([action])
   @@index([createdAt])
+}
+
+model ClientPayment {
+  id              String   @id @default(cuid())
+  clientId        String
+  userId          String
+  amount          Float
+  method          String
+  reference       String?
+  cashRegId       String?
+  currencyId      String   @default("")
+  appliedDetails  String   @default("[]") /// JSON: [{receivableId, amountApplied, previousBalance, newBalance}]
+
+  client    Client    @relation(fields: [clientId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
+  cashReg   CashRegister? @relation(fields: [cashRegId], references: [id])
+  currency  Currency? @relation(fields: [currencyId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([clientId])
+  @@index([userId])
 }
