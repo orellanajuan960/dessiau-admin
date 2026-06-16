@@ -137,15 +137,14 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
 
   const selectedMethod = paymentMethods.find(pm => pm.code === method)
 
-  // Resolve currencyId
-  const resolvedCurrencyId = baseCurrencyId
-    || currencies.find(c => c.isBase)?.id
-    || currencies[0]?.id
-    || ''
-  const hasNoCurrency = !resolvedCurrencyId && currencies.length > 0
-
-  // Determine if current method uses local currency
+  // Determine if current method uses local currency (needed before resolvedCurrencyId)
   const isLocalMethod = multiEnabled ? (selectedMethod?.isLocalCurrency ?? false) : false
+
+  // Resolve currencyId based on payment method type
+  const baseId = baseCurrencyId || currencies.find(c => c.isBase)?.id || ''
+  const refId = currencies.find(c => c.code === referenceCurrency)?.id || currencies[0]?.id || ''
+  const resolvedCurrencyId = isLocalMethod ? baseId : refId
+  const hasNoCurrency = !resolvedCurrencyId && currencies.length > 0
 
   // Show client selector when credit is selected
   const showClientSelector = selectedMethod?.isCredit === true

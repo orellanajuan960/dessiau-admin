@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
         receivables: {
           where: { status: 'pendiente' },
           select: {
+            amount: true,
             pendingBalance: true,
             currencyId: true,
             currency: { select: { code: true } },
@@ -46,6 +47,7 @@ export async function GET(request: NextRequest) {
                 lines: {
                   select: {
                     currencyCode: true,
+                    lineTotal: true,
                     product: { select: { currencyId: true, currency: { select: { code: true } } } } },
                 },
               },
@@ -57,26 +59,39 @@ export async function GET(request: NextRequest) {
     })
 
     // Compute pending balance per currency for each client
-    // Derive currency from sale lines (not from receivable.currencyId which may be wrong)
+    // The receivable.pendingBalance may be in wrong currency (converted to ref).
+    // We derive the REAL amounts from sale lines and apply the payment ratio.
     const clientsWithBalance = clients.map(client => {
       const totalPendingBalance = client.receivables.reduce((sum, r) => sum + r.pendingBalance, 0)
-      // Build a map of currencyCode -> total pending
       const balanceByCurrency: Record<string, number> = {}
+
       for (const r of client.receivables) {
-        // Derive currency from sale lines
         const lines = (r as any).sale?.lines || []
-        const lineCodes = new Set<string>()
+        if (lines.length === 0) {
+          // No lines — fall back to receivable's own currency/balance
+          const code = r.currency?.code || ''
+          if (code) balanceByCurrency[code] = (balanceByCurrency[code] || 0) + r.pendingBalance
+          continue
+        }
+
+        // Compute real line totals grouped by currency
+        const lineTotalsByCurrency: Record<string, number> = {}
         for (const line of lines) {
           const code = line.currencyCode || line.product?.currency?.code || ''
-          if (code) lineCodes.add(code)
+          if (!code) continue
+          lineTotalsByCurrency[code] = (lineTotalsByCurrency[code] || 0) + (line.lineTotal || 0)
         }
-        // If all lines share one currency, use it; otherwise fall back to receivable's currency
-        const derivedCode = lineCodes.size === 1
-          ? [...lineCodes][0]
-          : (lineCodes.size > 0 ? [...lineCodes][0] : (r.currency?.code || ''))
-        const code = derivedCode || ''
-        balanceByCurrency[code] = (balanceByCurrency[code] || 0) + r.pendingBalance
+
+        // Compute payment ratio: how much of the original receivable is still pending
+        // This handles partial payments correctly
+        const ratio = r.amount > 0 ? r.pendingBalance / r.amount : 1
+
+        // Apply ratio to each currency's line total
+        for (const [code, lineTotal] of Object.entries(lineTotalsByCurrency)) {
+          balanceByCurrency[code] = (balanceByCurrency[code] || 0) + Math.round(lineTotal * ratio * 100) / 100
+        }
       }
+
       // Round each currency balance
       for (const code of Object.keys(balanceByCurrency)) {
         balanceByCurrency[code] = Math.round(balanceByCurrency[code] * 100) / 100
