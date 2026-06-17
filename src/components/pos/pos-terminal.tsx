@@ -92,7 +92,7 @@ export function PosTerminal() {
       .finally(() => setCheckingCaja(false))
   }, [user?.id, selectedBranchId])
 
-  // Poll for caja status every 15s when blocked (auto-unblocks when admin opens caja)
+  // Poll for caja status every 30s when blocked (auto-unblocks when admin opens caja)
   useEffect(() => {
     if (cajaOpen) return
     const interval = setInterval(() => {
@@ -102,7 +102,7 @@ export function PosTerminal() {
           if (hasOpen) setCajaOpen(true)
         })
         .catch(() => {})
-    }, 15000)
+    }, 30000)
     return () => clearInterval(interval)
   }, [cajaOpen])
 
@@ -214,16 +214,34 @@ export function PosTerminal() {
     }
   }
 
-  // Punto 2: Poll products every 30s to detect stock changes
+  // Punto 2: Poll products every 60s to detect stock changes (only updates if data changed)
   useEffect(() => {
     if (checkingCaja || !cajaOpen) return
     const interval = setInterval(() => {
       api.get<{ products: ProductWithInventory[] }>('/api/products?active=true&allInventories=true')
-        .then(res => setProducts(res.products))
+        .then(res => {
+          setProducts(prev => {
+            // Quick length check — skip deep compare if counts differ
+            if (prev.length !== res.products.length) return res.products
+            // Compare each product's stock/price to avoid unnecessary re-render
+            let changed = false
+            for (let i = 0; i < prev.length; i++) {
+              const p = prev[i]
+              const n = res.products.find(x => x.id === p.id)
+              if (!n) { changed = true; break }
+              const inv = n.inventories.find(iv => iv.branchId === selectedBranchId)
+              const oldInv = p.inventories.find(iv => iv.branchId === selectedBranchId)
+              if ((inv?.stock ?? 0) !== (oldInv?.stock ?? 0) || (inv?.price ?? 0) !== (oldInv?.price ?? 0)) {
+                changed = true; break
+              }
+            }
+            return changed ? res.products : prev
+          })
+        })
         .catch(() => {})
-    }, 30000)
+    }, 60000)
     return () => clearInterval(interval)
-  }, [checkingCaja, cajaOpen])
+  }, [checkingCaja, cajaOpen, selectedBranchId])
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {

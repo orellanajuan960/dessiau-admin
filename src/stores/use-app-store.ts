@@ -119,8 +119,11 @@ export const useAppStore = create<AppState>()(
   )
 )
 
-// Helper to get a setting with fallback
+// Helper to get a setting with fallback — uses shallow equality on the
+// extracted value so components only re-render when their specific key changes.
 export function useSetting<K extends keyof AppSettings>(key: K): AppSettings[K] {
-  const settings = useAppStore((s) => s.settings)
-  return settings?.[key] ?? defaultSettings[key]
+  return useAppStore((s) => {
+    const v = s.settings?.[key]
+    return v !== undefined ? v : defaultSettings[key]
+  }, (a, b) => a === b)
 }

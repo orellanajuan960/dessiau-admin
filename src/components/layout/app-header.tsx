@@ -96,7 +96,7 @@ export function AppHeader() {
       .catch(() => {})
   }, [isCashier, user?.id])
 
-  // For cashiers, poll for register closure every 30 seconds
+  // For cashiers, poll for register closure every 60 seconds
   useEffect(() => {
     if (!isCashier || !user?.id) return
     const interval = setInterval(() => {
@@ -110,7 +110,7 @@ export function AppHeader() {
           }
         })
         .catch(() => {})
-    }, 30000) // 30 seconds
+    }, 60000) // 60 seconds
     return () => clearInterval(interval)
   }, [isCashier, user?.id])
 
