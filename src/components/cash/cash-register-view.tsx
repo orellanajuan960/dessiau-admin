@@ -1548,12 +1548,7 @@ export function CashRegisterView() {
                       <span className="text-muted-foreground">Total ventas:</span>
                       <span className="font-bold tabular-nums">{detail ? fmtBase(detail.totalSales - detail.totalCredit) : `${reg._count.sales} ventas`}</span>
                     </div>
-                    {detail && detail.totalCredit > 0 && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Ventas a credito:</span>
-                        <span className="font-bold tabular-nums text-amber-600 dark:text-amber-400">{fmtBase(detail.totalCredit)}</span>
-                      </div>
-                    )}
+
                   </div>
                   {(reg._count.sales > 0 || reg._count.movements > 0) && (
                     <div className="space-y-3">
@@ -1580,33 +1575,33 @@ export function CashRegisterView() {
                             ))}
                           </div>
                           {detail.creditSales.length > 0 && (
-                            <div className="rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 p-3 space-y-3">
-                              <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">
-                                <Clock className="h-3.5 w-3.5 inline mr-1" />
-                                Ventas a Credito ({detail.creditSales.length})
-                              </p>
-                              {detail.creditSales.map(cs => (
-                                <div key={cs.saleId} className="rounded border border-amber-200 dark:border-amber-800 bg-white dark:bg-muted/50 p-2.5 space-y-1.5">
-                                  <div className="flex items-center justify-between">
-                                    <div>
-                                      <span className="text-sm font-medium">{cs.clientName}</span>
-                                      <span className="text-xs text-muted-foreground ml-2">#{cs.saleNumber}</span>
+                            <>
+                              <Separator />
+                              <div className="space-y-2">
+                                <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Ventas a Credito</p>
+                                {detail.creditSales.map(cs => (
+                                  <div key={cs.saleId} className="rounded border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 p-2 space-y-1">
+                                    <div className="flex items-center justify-between">
+                                      <div className="min-w-0">
+                                        <span className="text-xs font-medium">{cs.clientName}</span>
+                                        <span className="text-xs text-muted-foreground ml-1">#{cs.saleNumber}</span>
+                                      </div>
+                                      <span className="text-xs font-bold tabular-nums shrink-0">{fmtCreditAmount(cs, fmtWith)}</span>
                                     </div>
-                                    <span className="text-sm font-bold tabular-nums">{fmtCreditAmount(cs, fmtWith)}</span>
+                                    <div className="text-[11px] text-muted-foreground space-y-0.5">
+                                      {cs.products.map((p, i) => (
+                                        <p key={i}>{p.name} x{p.quantity} \u2014 {fmtWith(p.lineTotal, p.currencyCode || undefined)}</p>
+                                      ))}
+                                      {cs.pendingBalance > 0 && (
+                                        <p className="text-amber-600 dark:text-amber-400 font-medium">
+                                          Saldo pendiente: {fmtPendingBalance(cs, fmtWith)}
+                                        </p>
+                                      )}
+                                    </div>
                                   </div>
-                                  <div className="text-xs text-muted-foreground space-y-0.5">
-                                    {cs.products.map((p, i) => (
-                                      <p key={i}>{p.name} x{p.quantity} \u2014 {fmtWith(p.lineTotal, p.currencyCode || undefined)}</p>
-                                    ))}
-                                  </div>
-                                  {cs.pendingBalance > 0 && (
-                                    <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">
-                                      Saldo pendiente: {fmtPendingBalance(cs, fmtWith)}
-                                    </p>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
+                                ))}
+                              </div>
+                            </>
                           )}
                           <div className="rounded-md border p-3 space-y-2 max-h-48 overflow-y-auto">
                             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Historial de Ventas</p>
