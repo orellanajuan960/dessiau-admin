@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react'
 import { usePosStore, type PausedSale } from '@/stores/use-pos-store'
 import { useSetting, useAppStore } from '@/stores/use-app-store'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -131,7 +132,7 @@ export function PosCart({ onPayment }: PosCartProps) {
   }
 
   const cartContent = (
-    <div className="flex w-full max-w-sm max-h-[calc(100vh-8rem)] flex-col rounded-lg border bg-card shadow-sm md:w-80 flex-1 min-h-0">
+    <div className="flex w-full max-w-sm flex-col rounded-lg border bg-card shadow-sm md:w-80">
       {/* Header */}
       <div className="flex items-center justify-between border-b p-3">
         <div className="flex items-center gap-2">
@@ -155,7 +156,7 @@ export function PosCart({ onPayment }: PosCartProps) {
       </div>
 
       {/* Items */}
-      <div className="flex-1 min-h-0 overflow-y-auto p-2 overscroll-contain">
+      <ScrollArea className="flex-1 p-2" style={{ maxHeight: 'calc(100vh - 22rem)' }}>
         {items.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <ShoppingCart className="mb-2 h-8 w-8 text-muted-foreground/50" />
@@ -281,7 +282,7 @@ export function PosCart({ onPayment }: PosCartProps) {
             })}
           </div>
         )}
-      </div>
+      </ScrollArea>
 
       {/* Footer */}
       <div className="border-t p-3 space-y-2">
