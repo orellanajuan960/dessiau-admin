@@ -927,6 +927,34 @@ export function CashRegisterView() {
                                     </div>
                                   ))}
                                 </div>
+                                {/* Full sales history with payment badges */}
+                                <Separator />
+                                <div className="space-y-2">
+                                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Historial de Ventas</p>
+                                  {salesDetail[reg.id].sales.map(sale => (
+                                    <div key={sale.id} className="rounded border p-2 text-xs space-y-1">
+                                      <div className="flex items-center justify-between">
+                                        <div className="min-w-0">
+                                          <span className="font-medium">{sale.clientName}</span>
+                                          <span className="text-muted-foreground ml-1.5">#{sale.number}</span>
+                                        </div>
+                                        <span className="font-bold tabular-nums shrink-0">{fmtWith(sale.total, sale.payments[0]?.currencyCode || undefined)}</span>
+                                      </div>
+                                      <div className="text-muted-foreground space-y-0.5">
+                                        {sale.products.map((p, i) => (
+                                          <p key={i}>{p.name} x{p.quantity} — {fmtProductPrice(p.lineTotal, p.currencyCode)}</p>
+                                        ))}
+                                      </div>
+                                      <div className="flex flex-wrap gap-1.5 pt-0.5">
+                                        {sale.payments.map((p, i) => (
+                                          <Badge key={i} variant="outline" className="text-[10px] px-1.5 py-0">
+                                            {p.reference ? `${p.method}: Ref. ${p.reference}` : `${p.method}: ${fmtWith(p.amount, p.currencyCode || undefined)}`}
+                                          </Badge>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
                                 {/* Credit sales detail */}
                                 {salesDetail[reg.id].creditSales.length > 0 && (
                                   <>
@@ -966,34 +994,6 @@ export function CashRegisterView() {
                                     </div>
                                   </>
                                 )}
-                                {/* Full sales history with payment badges */}
-                                <Separator />
-                                <div className="space-y-2">
-                                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Historial de Ventas</p>
-                                  {salesDetail[reg.id].sales.map(sale => (
-                                    <div key={sale.id} className="rounded border p-2 text-xs space-y-1">
-                                      <div className="flex items-center justify-between">
-                                        <div className="min-w-0">
-                                          <span className="font-medium">{sale.clientName}</span>
-                                          <span className="text-muted-foreground ml-1.5">#{sale.number}</span>
-                                        </div>
-                                        <span className="font-bold tabular-nums shrink-0">{fmtWith(sale.total, sale.payments[0]?.currencyCode || undefined)}</span>
-                                      </div>
-                                      <div className="text-muted-foreground space-y-0.5">
-                                        {sale.products.map((p, i) => (
-                                          <p key={i}>{p.name} x{p.quantity} — {fmtProductPrice(p.lineTotal, p.currencyCode)}</p>
-                                        ))}
-                                      </div>
-                                      <div className="flex flex-wrap gap-1.5 pt-0.5">
-                                        {sale.payments.map((p, i) => (
-                                          <Badge key={i} variant="outline" className="text-[10px] px-1.5 py-0">
-                                            {p.reference ? `${p.method}: Ref. ${p.reference}` : `${p.method}: ${fmtWith(p.amount, p.currencyCode || undefined)}`}
-                                          </Badge>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
                                 {/* Manual movements (entrada/salida) */}
                                 {salesDetail[reg.id].movements && salesDetail[reg.id].movements.length > 0 && (
                                   <>
@@ -1272,6 +1272,33 @@ export function CashRegisterView() {
                                           </div>
                                         ))}
                                       </div>
+                                      <Separator />
+                                      <div className="space-y-2">
+                                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Historial de Ventas</p>
+                                        {salesDetail[reg.id].sales.map(sale => (
+                                          <div key={sale.id} className="rounded border p-2 text-xs space-y-1">
+                                            <div className="flex items-center justify-between">
+                                              <div className="min-w-0">
+                                                <span className="font-medium">{sale.clientName}</span>
+                                                <span className="text-muted-foreground ml-1.5">#{sale.number}</span>
+                                              </div>
+                                              <span className="font-bold tabular-nums shrink-0">{fmtWith(sale.total, sale.payments[0]?.currencyCode || undefined)}</span>
+                                            </div>
+                                            <div className="text-muted-foreground space-y-0.5">
+                                              {sale.products.map((p, i) => (
+                                                <p key={i}>{p.name} x{p.quantity} — {fmtProductPrice(p.lineTotal, p.currencyCode)}</p>
+                                              ))}
+                                            </div>
+                                            <div className="flex flex-wrap gap-1.5 pt-0.5">
+                                              {sale.payments.map((p, i) => (
+                                                <Badge key={i} variant="outline" className="text-[10px] px-1.5 py-0">
+                                                  {p.reference ? `${p.method}: Ref. ${p.reference}` : `${p.method}: ${fmtWith(p.amount, p.currencyCode || undefined)}`}
+                                                </Badge>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
                                       {salesDetail[reg.id].creditSales.length > 0 && (
                                         <>
                                           <Separator />
@@ -1308,33 +1335,6 @@ export function CashRegisterView() {
                                           </div>
                                         </>
                                       )}
-                                      <Separator />
-                                      <div className="space-y-2">
-                                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Historial de Ventas</p>
-                                        {salesDetail[reg.id].sales.map(sale => (
-                                          <div key={sale.id} className="rounded border p-2 text-xs space-y-1">
-                                            <div className="flex items-center justify-between">
-                                              <div className="min-w-0">
-                                                <span className="font-medium">{sale.clientName}</span>
-                                                <span className="text-muted-foreground ml-1.5">#{sale.number}</span>
-                                              </div>
-                                              <span className="font-bold tabular-nums shrink-0">{fmtWith(sale.total, sale.payments[0]?.currencyCode || undefined)}</span>
-                                            </div>
-                                            <div className="text-muted-foreground space-y-0.5">
-                                              {sale.products.map((p, i) => (
-                                                <p key={i}>{p.name} x{p.quantity} — {fmtProductPrice(p.lineTotal, p.currencyCode)}</p>
-                                              ))}
-                                            </div>
-                                            <div className="flex flex-wrap gap-1.5 pt-0.5">
-                                              {sale.payments.map((p, i) => (
-                                                <Badge key={i} variant="outline" className="text-[10px] px-1.5 py-0">
-                                                  {p.reference ? `${p.method}: Ref. ${p.reference}` : `${p.method}: ${fmtWith(p.amount, p.currencyCode || undefined)}`}
-                                                </Badge>
-                                              ))}
-                                            </div>
-                                          </div>
-                                        ))}
-                                      </div>
                                       {/* Manual movements (closed register) */}
                                       {salesDetail[reg.id].movements && salesDetail[reg.id].movements.length > 0 && (
                                         <>
@@ -1606,6 +1606,32 @@ export function CashRegisterView() {
                               </div>
                             ))}
                           </div>
+                          <div className="rounded-md border p-3 space-y-2 max-h-48 overflow-y-auto">
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Historial de Ventas</p>
+                            {detail.sales.map(sale => (
+                              <div key={sale.id} className="rounded border p-2 text-xs space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <div className="min-w-0">
+                                    <span className="font-medium">{sale.clientName}</span>
+                                    <span className="text-muted-foreground ml-1.5">#{sale.number}</span>
+                                  </div>
+                                  <span className="font-bold tabular-nums shrink-0">{fmtWith(sale.total, sale.payments[0]?.currencyCode || undefined)}</span>
+                                </div>
+                                <div className="text-muted-foreground space-y-0.5">
+                                  {sale.products.map((p, i) => (
+                                    <p key={i}>{p.name} x{p.quantity} — {fmtProductPrice(p.lineTotal, p.currencyCode)}</p>
+                                  ))}
+                                </div>
+                                <div className="flex flex-wrap gap-1.5 pt-0.5">
+                                  {sale.payments.map((p, i) => (
+                                    <Badge key={i} variant="outline" className="text-[10px] px-1.5 py-0">
+                                      {p.reference ? `${p.method}: Ref. ${p.reference}` : `${p.method}: ${fmtWith(p.amount, p.currencyCode || undefined)}`}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                           {detail.creditSales.length > 0 && (
                             <>
                               <Separator />
@@ -1642,32 +1668,6 @@ export function CashRegisterView() {
                               </div>
                             </>
                           )}
-                          <div className="rounded-md border p-3 space-y-2 max-h-48 overflow-y-auto">
-                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Historial de Ventas</p>
-                            {detail.sales.map(sale => (
-                              <div key={sale.id} className="rounded border p-2 text-xs space-y-1">
-                                <div className="flex items-center justify-between">
-                                  <div className="min-w-0">
-                                    <span className="font-medium">{sale.clientName}</span>
-                                    <span className="text-muted-foreground ml-1.5">#{sale.number}</span>
-                                  </div>
-                                  <span className="font-bold tabular-nums shrink-0">{fmtWith(sale.total, sale.payments[0]?.currencyCode || undefined)}</span>
-                                </div>
-                                <div className="text-muted-foreground space-y-0.5">
-                                  {sale.products.map((p, i) => (
-                                    <p key={i}>{p.name} x{p.quantity} — {fmtProductPrice(p.lineTotal, p.currencyCode)}</p>
-                                  ))}
-                                </div>
-                                <div className="flex flex-wrap gap-1.5 pt-0.5">
-                                  {sale.payments.map((p, i) => (
-                                    <Badge key={i} variant="outline" className="text-[10px] px-1.5 py-0">
-                                      {p.reference ? `${p.method}: Ref. ${p.reference}` : `${p.method}: ${fmtWith(p.amount, p.currencyCode || undefined)}`}
-                                    </Badge>
-                                  ))}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
                         </>
                       ) : null}
                       {/* Manual movements in close dialog */}
