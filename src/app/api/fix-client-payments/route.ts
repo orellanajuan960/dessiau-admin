@@ -55,6 +55,7 @@ export async function POST() {
       method: string
       currencyId: string
       clientPaymentId: string
+      clientId: string
     }> = []
 
     for (const cp of clientPayments) {
@@ -77,6 +78,7 @@ export async function POST() {
         method: cp.method,
         currencyId: effectiveCurrencyId,
         clientPaymentId: cp.id,
+        clientId: cp.clientId,
       })
     }
 
@@ -84,17 +86,26 @@ export async function POST() {
       return NextResponse.json({ message: 'Todos los pagos ya tienen movimientos asociados', fixed: 0 })
     }
 
+    // Batch fetch client names
+    const clientIds = [...new Set(toCreate.map(t => t.clientId))]
+    const clients = await db.client.findMany({
+      where: { id: { in: clientIds } },
+      select: { id: true, name: true },
+    })
+    const clientMap = new Map(clients.map(c => [c.id, c.name]))
+
     let fixed = 0
     const regUpdates = new Map<string, number>()
 
     for (const item of toCreate) {
+      const cName = clientMap.get(item.clientId) || 'Cliente'
       await db.cashMovement.create({
         data: {
           cashRegId: item.cashRegId,
           userId: item.userId,
           type: 'entrada',
           amount: item.amount,
-          concept: 'Cobro a cliente',
+          concept: `Cobro a ${cName}`,
           method: item.method,
           currencyId: item.currencyId,
         },

@@ -53,6 +53,10 @@ export async function POST(
       const updated: AppliedDetail[] = []
       let cashMovementId: string | null = null
 
+      // Fetch client name for the movement concept
+      const client = await tx.client.findUnique({ where: { id: clientId }, select: { name: true } })
+      const clientName = client?.name || 'Cliente'
+
       for (const receivable of receivables) {
         if (remaining <= 0) break
 
@@ -89,7 +93,7 @@ export async function POST(
               userId,
               type: 'entrada',
               amount,
-              concept: 'Cobro a cliente',
+              concept: `Cobro a ${clientName}`,
               method,
               currencyId: movementCurrencyId,
             },
