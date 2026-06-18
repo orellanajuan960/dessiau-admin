@@ -290,11 +290,12 @@ export function CashRegisterView() {
 
   /** Format a product line price — shows original currency + base (Bs) equivalent if different */
   const fmtProductPrice = (lineTotal: number, currencyCode: string): string => {
+    const original = fmtWith(lineTotal, currencyCode || undefined)
     if (rate > 1 && currencyCode && currencyCode !== baseCode) {
       const baseAmt = Math.round(lineTotal * rate * 100) / 100
-      return fmtBase(baseAmt)
+      return `${original} (~${fmtBase(baseAmt)})`
     }
-    return fmtWith(lineTotal, currencyCode || undefined)
+    return original
   }
 
   const [registers, setRegisters] = useState<CashRegister[]>([])
@@ -936,9 +937,16 @@ export function CashRegisterView() {
                                             <span className="text-xs font-bold tabular-nums shrink-0">{fmtCreditAmount(cs, fmtWith)}</span>
                                           </div>
                                           <div className="text-[11px] text-muted-foreground space-y-0.5">
-                                            {cs.products.map((p, i) => (
-                                              <p key={i}>{p.name} x{p.quantity} — {fmtProductPrice(p.lineTotal, p.currencyCode)}</p>
-                                            ))}
+                                            {cs.products.map((p, i) => {
+                                              const isConverted = rate > 1 && p.currencyCode && p.currencyCode !== baseCode
+                                              const baseAmt = isConverted ? Math.round(p.lineTotal * rate * 100) / 100 : 0
+                                              return (
+                                                <div key={i} className="flex items-center justify-between">
+                                                  <p>{p.name} x{p.quantity} — {fmtWith(p.lineTotal, p.currencyCode || undefined)}</p>
+                                                  {isConverted && <p className="text-xs tabular-nums shrink-0 ml-2 text-muted-foreground">{fmtBase(baseAmt)}</p>}
+                                                </div>
+                                              )
+                                            })}
                                             {cs.pendingBalance > 0 && (
                                               <p className="text-amber-600 dark:text-amber-400 font-medium">
                                                 Saldo pendiente: {fmtPendingBalance(cs, fmtWith)}
@@ -1271,9 +1279,16 @@ export function CashRegisterView() {
                                                   <span className="text-xs font-bold tabular-nums shrink-0">{fmtCreditAmount(cs, fmtWith)}</span>
                                                 </div>
                                                 <div className="text-[11px] text-muted-foreground space-y-0.5">
-                                                  {cs.products.map((p, i) => (
-                                                    <p key={i}>{p.name} x{p.quantity} — {fmtProductPrice(p.lineTotal, p.currencyCode)}</p>
-                                                  ))}
+                                                  {cs.products.map((p, i) => {
+                                                    const isConverted = rate > 1 && p.currencyCode && p.currencyCode !== baseCode
+                                                    const baseAmt = isConverted ? Math.round(p.lineTotal * rate * 100) / 100 : 0
+                                                    return (
+                                                      <div key={i} className="flex items-center justify-between">
+                                                        <p>{p.name} x{p.quantity} — {fmtWith(p.lineTotal, p.currencyCode || undefined)}</p>
+                                                        {isConverted && <p className="text-xs tabular-nums shrink-0 ml-2 text-muted-foreground">{fmtBase(baseAmt)}</p>}
+                                                      </div>
+                                                    )
+                                                  })}
                                                   {cs.pendingBalance > 0 && (
                                                     <p className="text-amber-600 dark:text-amber-400 font-medium">
                                                       Saldo pendiente: {fmtPendingBalance(cs, fmtWith)}
@@ -1598,9 +1613,16 @@ export function CashRegisterView() {
                                       <span className="text-xs font-bold tabular-nums shrink-0">{fmtCreditAmount(cs, fmtWith)}</span>
                                     </div>
                                     <div className="text-[11px] text-muted-foreground space-y-0.5">
-                                      {cs.products.map((p, i) => (
-                                        <p key={i}>{p.name} x{p.quantity} \u2014 {fmtProductPrice(p.lineTotal, p.currencyCode)}</p>
-                                      ))}
+                                      {cs.products.map((p, i) => {
+                                        const isConverted = rate > 1 && p.currencyCode && p.currencyCode !== baseCode
+                                        const baseAmt = isConverted ? Math.round(p.lineTotal * rate * 100) / 100 : 0
+                                        return (
+                                          <div key={i} className="flex items-center justify-between">
+                                            <p>{p.name} x{p.quantity} \u2014 {fmtWith(p.lineTotal, p.currencyCode || undefined)}</p>
+                                            {isConverted && <p className="text-xs tabular-nums shrink-0 ml-2 text-muted-foreground">{fmtBase(baseAmt)}</p>}
+                                          </div>
+                                        )
+                                      })}
                                       {cs.pendingBalance > 0 && (
                                         <p className="text-amber-600 dark:text-amber-400 font-medium">
                                           Saldo pendiente: {fmtPendingBalance(cs, fmtWith)}
