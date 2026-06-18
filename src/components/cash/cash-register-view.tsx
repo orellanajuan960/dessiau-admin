@@ -290,12 +290,11 @@ export function CashRegisterView() {
 
   /** Format a product line price — shows original currency + base (Bs) equivalent if different */
   const fmtProductPrice = (lineTotal: number, currencyCode: string): string => {
-    const original = fmtWith(lineTotal, currencyCode || undefined)
     if (rate > 1 && currencyCode && currencyCode !== baseCode) {
       const baseAmt = Math.round(lineTotal * rate * 100) / 100
-      return `${original} (~${fmtBase(baseAmt)})`
+      return fmtBase(baseAmt)
     }
-    return original
+    return fmtWith(lineTotal, currencyCode || undefined)
   }
 
   const [registers, setRegisters] = useState<CashRegister[]>([])
@@ -972,17 +971,10 @@ export function CashRegisterView() {
                                       <div className="flex flex-wrap gap-1.5 pt-0.5">
                                         {sale.payments.map((p, i) => (
                                           <Badge key={i} variant="outline" className="text-[10px] px-1.5 py-0">
-                                            {p.method}: {fmtWith(p.amount, p.currencyCode || undefined)}
+                                            {p.reference ? `${p.method}: Ref. ${p.reference}` : `${p.method}: ${fmtWith(p.amount, p.currencyCode || undefined)}`}
                                           </Badge>
                                         ))}
                                       </div>
-                                      {sale.payments.some(p => p.reference) && (
-                                        <div className="text-[10px] text-muted-foreground space-y-0">
-                                          {sale.payments.filter(p => p.reference).map((p, i) => (
-                                            <p key={i}>{p.method}: Ref. {p.reference}</p>
-                                          ))}
-                                        </div>
-                                      )}
                                     </div>
                                   ))}
                                 </div>
@@ -1313,17 +1305,10 @@ export function CashRegisterView() {
                                             <div className="flex flex-wrap gap-1.5 pt-0.5">
                                               {sale.payments.map((p, i) => (
                                                 <Badge key={i} variant="outline" className="text-[10px] px-1.5 py-0">
-                                                  {p.method}: {fmtWith(p.amount, p.currencyCode || undefined)}
+                                                  {p.reference ? `${p.method}: Ref. ${p.reference}` : `${p.method}: ${fmtWith(p.amount, p.currencyCode || undefined)}`}
                                                 </Badge>
                                               ))}
                                             </div>
-                                            {sale.payments.some(p => p.reference) && (
-                                              <div className="text-[10px] text-muted-foreground space-y-0">
-                                                {sale.payments.filter(p => p.reference).map((p, i) => (
-                                                  <p key={i}>{p.method}: Ref. {p.reference}</p>
-                                                ))}
-                                              </div>
-                                            )}
                                           </div>
                                         ))}
                                       </div>
@@ -1646,17 +1631,10 @@ export function CashRegisterView() {
                                 <div className="flex flex-wrap gap-1.5 pt-0.5">
                                   {sale.payments.map((p, i) => (
                                     <Badge key={i} variant="outline" className="text-[10px] px-1.5 py-0">
-                                      {p.method}: {fmtWith(p.amount, p.currencyCode || undefined)}
+                                      {p.reference ? `${p.method}: Ref. ${p.reference}` : `${p.method}: ${fmtWith(p.amount, p.currencyCode || undefined)}`}
                                     </Badge>
                                   ))}
                                 </div>
-                                {sale.payments.some(p => p.reference) && (
-                                  <div className="text-[10px] text-muted-foreground space-y-0">
-                                    {sale.payments.filter(p => p.reference).map((p, i) => (
-                                      <p key={i}>{p.method}: Ref. {p.reference}</p>
-                                    ))}
-                                  </div>
-                                )}
                               </div>
                             ))}
                           </div>
