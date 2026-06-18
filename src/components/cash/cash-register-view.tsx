@@ -1447,7 +1447,7 @@ export function CashRegisterView() {
               <Input
                 id="initial"
                 type="text"
-                inputMode="numeric"
+                inputMode="decimal"
                 className={`cash-input [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield] ${parseFloat(initialAmt.replace(/,/g, '')) >= MAX_INITIAL ? 'border-amber-500 focus-visible:ring-amber-500' : ''}`}
                 value={initialAmt}
                 onChange={(e) => setInitialAmt(numericFilter(e.target.value))}
@@ -1518,7 +1518,7 @@ export function CashRegisterView() {
               <Input
                 id="mamt"
                 type="text"
-                inputMode="numeric"
+                inputMode="decimal"
                 className="cash-input [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
                 value={moveAmount}
                 onChange={(e) => setMoveAmount(numericFilter(e.target.value))}
@@ -1709,7 +1709,7 @@ export function CashRegisterView() {
               <Input
                 id="closeamt"
                 type="text"
-                inputMode="numeric"
+                inputMode="decimal"
                 className="cash-input [&::-webkit-inner-spin-button]:appearance:none [&::-webkit-outer-spin-button]:appearance:none [-moz-appearance:textfield]"
                 value={closeActual}
                 onChange={(e) => setCloseActual(numericFilter(e.target.value))}
@@ -1783,7 +1783,7 @@ export function CashRegisterView() {
               <Input
                 id="wamt"
                 type="text"
-                inputMode="numeric"
+                inputMode="decimal"
                 className="cash-input [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
                 min="0"
                 value={withdrawalAmount}
