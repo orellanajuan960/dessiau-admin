@@ -602,7 +602,7 @@ export function PosTerminal() {
                   <DrawerTitle>Carrito</DrawerTitle>
                   <DrawerDescription>{itemCount} productos · Total: {multiEnabledCurrency ? `${baseSym} ${totalLocal.toFixed(2)}` : `${currencySymbol}${total.toFixed(2)}`}</DrawerDescription>
                 </DrawerHeader>
-                <div className="px-4 pb-4 flex flex-col max-h-[70vh]">
+                <div className="px-4 pb-4 flex flex-col overflow-hidden" style={{ maxHeight: '70vh' }}>
                   <PosCart onPayment={() => {
                     setCartOpen(false)
                     setShowPayment(true)

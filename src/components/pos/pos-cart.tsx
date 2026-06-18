@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react'
 import { usePosStore, type PausedSale } from '@/stores/use-pos-store'
 import { useSetting, useAppStore } from '@/stores/use-app-store'
-import { ScrollArea } from '@/components/ui/scroll-area'
+// ScrollArea removed — using native overflow-y-auto for reliable mobile scrolling
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -157,7 +157,7 @@ export function PosCart({ onPayment, className }: PosCartProps) {
       </div>
 
       {/* Items */}
-      <ScrollArea className="flex-1 p-2 [scrollbar-width:thin] [scrollbar-color:var(--muted-foreground)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/40 [&::-webkit-scrollbar-track]:bg-transparent" style={{ maxHeight: 'calc(100vh - 22rem)' }}>
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-2 [scrollbar-width:thin] [scrollbar-color:var(--muted-foreground)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/40 [&::-webkit-scrollbar-track]:bg-transparent" style={className ? undefined : { maxHeight: 'calc(100vh - 22rem)' }}>
         {items.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <ShoppingCart className="mb-2 h-8 w-8 text-muted-foreground/50" />
@@ -283,7 +283,7 @@ export function PosCart({ onPayment, className }: PosCartProps) {
             })}
           </div>
         )}
-      </ScrollArea>
+      </div>
 
       {/* Footer */}
       <div className="border-t p-3 space-y-2">
