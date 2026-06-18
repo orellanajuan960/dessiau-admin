@@ -24,6 +24,7 @@ import { convertToRefCurrency, calcCartTotals, formatRefPrecision } from '@/lib/
 
 interface PosCartProps {
   onPayment: () => void
+  className?: string
 }
 
 function formatPausedTime(isoDate: string) {
@@ -36,7 +37,7 @@ function formatPausedTime(isoDate: string) {
   })
 }
 
-export function PosCart({ onPayment }: PosCartProps) {
+export function PosCart({ onPayment, className }: PosCartProps) {
   const {
     items, updateQuantity, removeItem, getTotal, getItemCount,
     pauseSale, resumeSale, deletePausedSale,
@@ -132,7 +133,7 @@ export function PosCart({ onPayment }: PosCartProps) {
   }
 
   const cartContent = (
-    <div className="flex w-full max-w-sm flex-col rounded-lg border bg-card shadow-sm md:w-80">
+    <div className={`flex w-full max-w-sm flex-col rounded-lg border bg-card shadow-sm md:w-80 ${className || ''}`}>
       {/* Header */}
       <div className="flex items-center justify-between border-b p-3">
         <div className="flex items-center gap-2">
@@ -156,7 +157,7 @@ export function PosCart({ onPayment }: PosCartProps) {
       </div>
 
       {/* Items */}
-      <ScrollArea className="flex-1 p-2" style={{ maxHeight: 'calc(100vh - 22rem)' }}>
+      <ScrollArea className="flex-1 p-2 [scrollbar-width:thin] [scrollbar-color:var(--muted-foreground)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/40 [&::-webkit-scrollbar-track]:bg-transparent" style={{ maxHeight: 'calc(100vh - 22rem)' }}>
         {items.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <ShoppingCart className="mb-2 h-8 w-8 text-muted-foreground/50" />
