@@ -224,6 +224,7 @@ export async function GET(
         method: p.method,
         amount: roundTwo(p.amount),
         currencyCode: p.currency?.code ?? '',
+        reference: p.reference ?? '',
       })),
       products: sale.lines.map((l) => ({
         name: l.product?.name ?? 'Producto eliminado',
