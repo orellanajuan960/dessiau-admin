@@ -85,27 +85,41 @@ export async function POST(
 
       // Create cash movement for ALL payment methods (to show in breakdown + update box total)
       if (cashRegId) {
-        const movementCurrencyId = currencyId || (await tx.currency.findFirst({ where: { isBase: true } }))?.id
-        if (movementCurrencyId) {
+        // Use displayAmount (what user actually paid) and displayCurrencyCode for correct currency
+        const displayAmt = displayAmount || amount
+        let movCurrencyId = currencyId
+        if (displayCurrencyCode) {
+          const displayCur = await tx.currency.findFirst({ where: { code: displayCurrencyCode } })
+          if (displayCur) movCurrencyId = displayCur.id
+        }
+        if (movCurrencyId) {
           const movement = await tx.cashMovement.create({
             data: {
               cashRegId,
               userId,
               type: 'entrada',
-              amount,
+              amount: Math.round(displayAmt * 100) / 100,
               concept: `Cobro a ${clientName}`,
               method,
-              currencyId: movementCurrencyId,
+              currencyId: movCurrencyId,
             },
           })
           cashMovementId = movement.id
 
-          // Update cash register current amount (all methods, since money was collected at register)
+          // Update cash register current amount — convert to base currency if needed
           const reg = await tx.cashRegister.findUnique({ where: { id: cashRegId } })
           if (reg) {
+            let amtForRegister = displayAmt
+            // If the movement currency is not the base currency, convert using exchange rate
+            if (displayCurrencyCode) {
+              const baseCur = await tx.currency.findFirst({ where: { isBase: true } })
+              if (baseCur && baseCur.code !== displayCurrencyCode && settings?.exchangeRate) {
+                amtForRegister = Math.round(displayAmt * settings.exchangeRate * 100) / 100
+              }
+            }
             await tx.cashRegister.update({
               where: { id: cashRegId },
-              data: { currentAmt: Math.round((reg.currentAmt + amount) * 100) / 100 },
+              data: { currentAmt: Math.round((reg.currentAmt + amtForRegister) * 100) / 100 },
             })
           }
         }

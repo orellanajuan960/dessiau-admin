@@ -1,6 +1,5 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
-import { getPaymentMethodsFromDB, FALLBACK_METHODS } from '@/lib/payment-methods'
 
 interface AppliedDetail {
   receivableId: string
@@ -98,31 +97,40 @@ export async function DELETE(
 
       // Remove the cash movement if it was created for this payment
       if (payment.cashRegId) {
-        const pmList = await getPaymentMethodsFromDB().catch(() => FALLBACK_METHODS)
-        const cashCodes = new Set(pmList.filter(m => m.isCash).map(m => m.code))
+        // Find the matching movement: same register, user, type, method, amount, and concept pattern
+        const client = await tx.client.findUnique({ where: { id: clientId }, select: { name: true } })
+        const clientName = client?.name || ''
 
-        if (cashCodes.has(payment.method)) {
-          const movement = await tx.cashMovement.findFirst({
-            where: {
-              cashRegId: payment.cashRegId,
-              userId: payment.userId,
-              type: 'entrada',
-              amount: payment.amount,
-              concept: { contains: `ID: ${clientId}` },
-            },
-            orderBy: { createdAt: 'desc' },
-          })
+        const movement = await tx.cashMovement.findFirst({
+          where: {
+            cashRegId: payment.cashRegId,
+            userId: payment.userId,
+            type: 'entrada',
+            amount: payment.amount,
+            method: payment.method,
+            concept: { contains: clientName ? `Cobro a ${clientName}` : 'Cobro a' },
+          },
+          orderBy: { createdAt: 'desc' },
+        })
 
-          if (movement) {
-            const reg = await tx.cashRegister.findUnique({ where: { id: payment.cashRegId } })
-            if (reg) {
-              await tx.cashRegister.update({
-                where: { id: payment.cashRegId },
-                data: { currentAmt: Math.round((reg.currentAmt - payment.amount) * 100) / 100 },
-              })
-            }
-            await tx.cashMovement.delete({ where: { id: movement.id } })
+        if (movement) {
+          const settings = await tx.settings.findFirst()
+          // Reverse the register currentAmt: convert movement amount to base currency if needed
+          let amtToSubtract = movement.amount
+          const movCode = movement.currencyId ? (await tx.currency.findUnique({ where: { id: movement.currencyId }, select: { code: true } }))?.code : null
+          const baseCur = await tx.currency.findFirst({ where: { isBase: true } })
+          if (movCode && baseCur && movCode !== baseCur.code && settings?.exchangeRate) {
+            amtToSubtract = Math.round(movement.amount * settings.exchangeRate * 100) / 100
           }
+
+          const reg = await tx.cashRegister.findUnique({ where: { id: payment.cashRegId } })
+          if (reg) {
+            await tx.cashRegister.update({
+              where: { id: payment.cashRegId },
+              data: { currentAmt: Math.round((reg.currentAmt - amtToSubtract) * 100) / 100 },
+            })
+          }
+          await tx.cashMovement.delete({ where: { id: movement.id } })
         }
       }
 
