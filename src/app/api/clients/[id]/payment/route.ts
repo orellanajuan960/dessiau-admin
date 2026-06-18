@@ -1,7 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { formatCurrency } from '@/lib/currency'
-import { getPaymentMethodsFromDB, FALLBACK_METHODS } from '@/lib/payment-methods'
 
 interface AppliedDetail {
   receivableId: string
@@ -80,10 +79,7 @@ export async function POST(
         remaining = Math.round((remaining - applied) * 100) / 100
       }
 
-      // Create cash movement for ALL payment methods (to show in breakdown)
-      // Only update currentAmt for cash methods (physical money in box)
-      const pmList = await getPaymentMethodsFromDB().catch(() => FALLBACK_METHODS)
-      const cashCodes = new Set(pmList.filter(m => m.isCash).map(m => m.code))
+      // Create cash movement for ALL payment methods (to show in breakdown + update box total)
       if (cashRegId) {
         const movementCurrencyId = currencyId || (await tx.currency.findFirst({ where: { isBase: true } }))?.id
         if (movementCurrencyId) {
@@ -100,15 +96,13 @@ export async function POST(
           })
           cashMovementId = movement.id
 
-          // Only update physical cash amount for cash methods
-          if (cashCodes.has(method)) {
-            const reg = await tx.cashRegister.findUnique({ where: { id: cashRegId } })
-            if (reg) {
-              await tx.cashRegister.update({
-                where: { id: cashRegId },
-                data: { currentAmt: Math.round((reg.currentAmt + amount) * 100) / 100 },
-              })
-            }
+          // Update cash register current amount (all methods, since money was collected at register)
+          const reg = await tx.cashRegister.findUnique({ where: { id: cashRegId } })
+          if (reg) {
+            await tx.cashRegister.update({
+              where: { id: cashRegId },
+              data: { currentAmt: Math.round((reg.currentAmt + amount) * 100) / 100 },
+            })
           }
         }
       }
