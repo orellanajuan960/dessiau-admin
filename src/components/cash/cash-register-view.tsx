@@ -905,7 +905,7 @@ export function CashRegisterView() {
                           Ver desglose
                         </button>
                         {expandedRegDetail === reg.id && (
-                          <div className="rounded-md border bg-muted/30 p-2.5 space-y-2 max-h-80 overflow-y-auto">
+                          <div className="rounded-md border bg-muted/30 p-2.5 space-y-2">
                             {loadingDetail[reg.id] ? (
                               <div className="flex items-center justify-center py-4">
                                 <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -929,7 +929,7 @@ export function CashRegisterView() {
                                 </div>
                                 {/* Full sales history with payment badges */}
                                 <Separator />
-                                <div className="space-y-2">
+                                <div className="space-y-2 max-h-48 overflow-y-auto">
                                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Historial de Ventas</p>
                                   {salesDetail[reg.id].sales.map(sale => (
                                     <div key={sale.id} className="rounded border p-2 text-xs space-y-1">
@@ -959,7 +959,7 @@ export function CashRegisterView() {
                                 {salesDetail[reg.id].creditSales.length > 0 && (
                                   <>
                                     <Separator />
-                                    <div className="space-y-2">
+                                    <div className="space-y-2 max-h-48 overflow-y-auto">
                                       <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">
                                         Ventas a Credito
                                       </p>
@@ -998,7 +998,7 @@ export function CashRegisterView() {
                                 {salesDetail[reg.id].movements && salesDetail[reg.id].movements.length > 0 && (
                                   <>
                                     <Separator />
-                                    <div className="space-y-2">
+                                    <div className="space-y-2 max-h-48 overflow-y-auto">
                                       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Movimientos Manuales</p>
                                       {salesDetail[reg.id].movements.map(mov => (
                                         <div key={mov.id} className={`rounded border p-2 text-xs space-y-1 ${mov.type === 'entrada' ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20' : 'border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-950/20'}`}>
@@ -1251,7 +1251,7 @@ export function CashRegisterView() {
                                 Ver desglose y movimientos
                               </button>
                               {expandedRegDetail === reg.id && (
-                                <div className="mt-2 rounded-md border bg-muted/30 p-2.5 space-y-2 max-h-80 overflow-y-auto">
+                                <div className="mt-2 rounded-md border bg-muted/30 p-2.5 space-y-2">
                                   {loadingDetail[reg.id] ? (
                                     <div className="flex items-center justify-center py-4">
                                       <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -1273,7 +1273,7 @@ export function CashRegisterView() {
                                         ))}
                                       </div>
                                       <Separator />
-                                      <div className="space-y-2">
+                                      <div className="space-y-2 max-h-48 overflow-y-auto">
                                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Historial de Ventas</p>
                                         {salesDetail[reg.id].sales.map(sale => (
                                           <div key={sale.id} className="rounded border p-2 text-xs space-y-1">
@@ -1302,7 +1302,7 @@ export function CashRegisterView() {
                                       {salesDetail[reg.id].creditSales.length > 0 && (
                                         <>
                                           <Separator />
-                                          <div className="space-y-2">
+                                          <div className="space-y-2 max-h-48 overflow-y-auto">
                                             <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Ventas a Crédito</p>
                                             {salesDetail[reg.id].creditSales.map(cs => (
                                               <div key={cs.saleId} className="rounded border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 p-2 space-y-1">
@@ -1339,7 +1339,7 @@ export function CashRegisterView() {
                                       {salesDetail[reg.id].movements && salesDetail[reg.id].movements.length > 0 && (
                                         <>
                                           <Separator />
-                                          <div className="space-y-2">
+                                          <div className="space-y-2 max-h-48 overflow-y-auto">
                                             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Movimientos Manuales</p>
                                             {salesDetail[reg.id].movements.map(mov => (
                                               <div key={mov.id} className={`rounded border p-2 text-xs space-y-1 ${mov.type === 'entrada' ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20' : 'border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-950/20'}`}>
@@ -1635,7 +1635,7 @@ export function CashRegisterView() {
                           {detail.creditSales.length > 0 && (
                             <>
                               <Separator />
-                              <div className="space-y-2">
+                              <div className="rounded-md border p-3 space-y-2 max-h-48 overflow-y-auto">
                                 <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Ventas a Credito</p>
                                 {detail.creditSales.map(cs => (
                                   <div key={cs.saleId} className="rounded border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 p-2 space-y-1">
@@ -1672,7 +1672,7 @@ export function CashRegisterView() {
                       ) : null}
                       {/* Manual movements in close dialog */}
                       {detail && detail.movements && detail.movements.length > 0 && (
-                        <div className="rounded-md border p-3 space-y-2">
+                        <div className="rounded-md border p-3 space-y-2 max-h-48 overflow-y-auto">
                           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Movimientos Manuales</p>
                           {detail.movements.map(mov => (
                             <div key={mov.id} className={`rounded border p-2 text-xs space-y-1 ${mov.type === 'entrada' ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20' : 'border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-950/20'}`}>
