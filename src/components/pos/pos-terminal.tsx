@@ -18,6 +18,8 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { toast } from 'sonner'
 import { useCurrency } from '@/hooks/use-currency'
 import { BarcodeScannerDialog } from './barcode-scanner-dialog'
+import { calcCartTotals } from '@/lib/currency-conversion'
+import { getCurrencyForCountry } from '@/lib/country-currency'
 
 interface ProductWithInventory {
   id: string
@@ -65,7 +67,16 @@ export function PosTerminal() {
   const [gerenteReason, setGerenteReason] = useState('')
   const [showSuggestions, setShowSuggestions] = useState(false)
   const isMobile = useIsMobile()
-  const { sym: currencySymbol } = useCurrency()
+  const { sym: currencySymbol, baseSym, multiEnabled: multiEnabledCurrency } = useCurrency()
+  const referenceCurrency = useSetting('referenceCurrency')
+  const country = useSetting('country') || 'VE'
+  const multiEnabledSetting = useSetting('multiCurrencyEnabled') as boolean
+  const eurRate = useSetting('eurRate')
+  const usdRate = useSetting('usdRate')
+  const ivaEnabled = useSetting('ivaEnabled')
+  const ivaRate = Number(useSetting('ivaRate')) || 0
+  const localInfo = getCurrencyForCountry(country)
+  const localCode = localInfo?.code || ''
 
   // Unit quantity selector for weight/volume products
   const [unitProduct, setUnitProduct] = useState<ProductWithInventory | null>(null)
@@ -401,6 +412,20 @@ export function PosTerminal() {
   const itemCount = getItemCount()
   const total = getTotal()
 
+  // Calculate total in local currency (Bs) for multi-currency display
+  const { subtotalLocal } = useMemo(() => {
+    return calcCartTotals(items, {
+      multiEnabled: multiEnabledSetting,
+      exchangeRate: exchangeRate as number,
+      referenceCurrency: referenceCurrency,
+      localCode,
+      eurRate: eurRate || 0,
+      usdRate: usdRate || 0,
+    })
+  }, [items, multiEnabledSetting, exchangeRate, referenceCurrency, localCode, eurRate, usdRate])
+  const ivaAmountLocal = ivaEnabled ? Math.round(subtotalLocal * (ivaRate / 100) * 100) / 100 : 0
+  const totalLocal = Math.round((subtotalLocal + ivaAmountLocal) * 100) / 100
+
   const cartContent = (
     <PosCart onPayment={() => {
       setCartOpen(false)
@@ -565,7 +590,7 @@ export function PosTerminal() {
               <DrawerContent>
                 <DrawerHeader>
                   <DrawerTitle>Carrito</DrawerTitle>
-                  <DrawerDescription>{itemCount} productos · Total: {currencySymbol}{total.toFixed(2)}</DrawerDescription>
+                  <DrawerDescription>{itemCount} productos · Total: {multiEnabledCurrency ? `${baseSym} ${totalLocal.toFixed(2)}` : `${currencySymbol}${total.toFixed(2)}`}</DrawerDescription>
                 </DrawerHeader>
                 <div className="px-4 pb-4 overflow-auto max-h-[60vh]">
                   {cartContent}
