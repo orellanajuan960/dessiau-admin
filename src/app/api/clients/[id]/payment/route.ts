@@ -80,31 +80,35 @@ export async function POST(
         remaining = Math.round((remaining - applied) * 100) / 100
       }
 
-      // Create cash movement if cash register is open and method is cash
+      // Create cash movement for ALL payment methods (to show in breakdown)
+      // Only update currentAmt for cash methods (physical money in box)
       const pmList = await getPaymentMethodsFromDB().catch(() => FALLBACK_METHODS)
       const cashCodes = new Set(pmList.filter(m => m.isCash).map(m => m.code))
-      if (cashRegId && cashCodes.has(method)) {
-        const effectiveCurrencyId = currencyId || (await tx.currency.findFirst({ where: { isBase: true } }))?.id
-        if (effectiveCurrencyId) {
+      if (cashRegId) {
+        const movementCurrencyId = currencyId || (await tx.currency.findFirst({ where: { isBase: true } }))?.id
+        if (movementCurrencyId) {
           const movement = await tx.cashMovement.create({
             data: {
               cashRegId,
               userId,
               type: 'entrada',
               amount,
-              concept: `Cobro a cliente (ID: ${clientId})`,
-              currencyId: effectiveCurrencyId,
+              concept: 'Cobro a cliente',
+              method,
+              currencyId: movementCurrencyId,
             },
           })
           cashMovementId = movement.id
 
-          // Update cash register current amount
-          const reg = await tx.cashRegister.findUnique({ where: { id: cashRegId } })
-          if (reg) {
-            await tx.cashRegister.update({
-              where: { id: cashRegId },
-              data: { currentAmt: Math.round((reg.currentAmt + amount) * 100) / 100 },
-            })
+          // Only update physical cash amount for cash methods
+          if (cashCodes.has(method)) {
+            const reg = await tx.cashRegister.findUnique({ where: { id: cashRegId } })
+            if (reg) {
+              await tx.cashRegister.update({
+                where: { id: cashRegId },
+                data: { currentAmt: Math.round((reg.currentAmt + amount) * 100) / 100 },
+              })
+            }
           }
         }
       }
