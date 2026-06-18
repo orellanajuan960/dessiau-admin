@@ -52,6 +52,11 @@ export function PosTerminal() {
   const [products, setProducts] = useState<ProductWithInventory[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [showPayment, setShowPayment] = useState(false)
+  const [paymentPreload, setPaymentPreload] = useState<{
+    currencies: { id: string; code: string; symbol: string; isBase: boolean }[]
+    openCashRegId: string | null
+    paymentMethods: { code: string; name: string; icon: string; enabled: boolean; needsReference: boolean; isLocalCurrency: boolean; isCash: boolean; isCredit: boolean }[]
+  } | null>(null)
   const [loading, setLoading] = useState(true)
   const [cartOpen, setCartOpen] = useState(false)
   const [showBarcodeInput, setShowBarcodeInput] = useState(false)
@@ -116,6 +121,25 @@ export function PosTerminal() {
     }, 30000)
     return () => clearInterval(interval)
   }, [cajaOpen])
+
+  // Preload payment modal data (methods, currencies, open register) on mount
+  useEffect(() => {
+    if (!cajaOpen) return
+    const c = country || 'VE'
+    Promise.all([
+      api.get<{ id: string; code: string; symbol: string; isBase: boolean }[]>('/api/currencies'),
+      api.get<Array<{ id: string; status: string }>>('/api/cash-register'),
+      api.get<{ code: string; name: string; icon: string; enabled: boolean; needsReference: boolean; isLocalCurrency: boolean; isCash: boolean; isCredit: boolean }[]>(`/api/payment-methods?country=${c}`),
+    ]).then(([currencies, registers, methods]) => {
+      const safeRegisters = Array.isArray(registers) ? registers : []
+      const openReg = safeRegisters.find(r => r.status === 'abierta')
+      setPaymentPreload({
+        currencies: Array.isArray(currencies) ? currencies : [],
+        openCashRegId: openReg?.id || null,
+        paymentMethods: Array.isArray(methods) ? methods : [],
+      })
+    }).catch(() => {})
+  }, [cajaOpen, country])
 
   // Validate saved cart against current branch on mount
   useEffect(() => {
@@ -733,7 +757,7 @@ export function PosTerminal() {
       {!isMobile && cartContent}
 
       {/* Payment Modal */}
-      {showPayment && <PosPaymentModal onClose={handlePaymentSuccess} />}
+      {showPayment && <PosPaymentModal onClose={handlePaymentSuccess} preloadedData={paymentPreload || undefined} />}
 
       {/* Camera Barcode Scanner */}
       <BarcodeScannerDialog
