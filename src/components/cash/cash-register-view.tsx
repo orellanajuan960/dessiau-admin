@@ -1626,7 +1626,7 @@ export function CashRegisterView() {
                                         const baseAmt = isConverted ? Math.round(p.lineTotal * rate * 100) / 100 : 0
                                         return (
                                           <div key={i} className="flex items-center justify-between">
-                                            <p>{p.name} x{p.quantity} \u2014 {fmtWith(p.lineTotal, p.currencyCode || undefined)}</p>
+                                            <p>{p.name} x{p.quantity} — {fmtWith(p.lineTotal, p.currencyCode || undefined)}</p>
                                             {isConverted && <p className="text-xs tabular-nums shrink-0 ml-2 text-muted-foreground">{fmtBase(baseAmt)}</p>}
                                           </div>
                                         )
@@ -1655,7 +1655,7 @@ export function CashRegisterView() {
                                 </div>
                                 <div className="text-muted-foreground space-y-0.5">
                                   {sale.products.map((p, i) => (
-                                    <p key={i}>{p.name} x{p.quantity} \u2014 {fmtProductPrice(p.lineTotal, p.currencyCode)}</p>
+                                    <p key={i}>{p.name} x{p.quantity} — {fmtProductPrice(p.lineTotal, p.currencyCode)}</p>
                                   ))}
                                 </div>
                                 <div className="flex flex-wrap gap-1.5 pt-0.5">
