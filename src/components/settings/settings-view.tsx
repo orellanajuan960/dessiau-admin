@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { api } from '@/lib/api'
 import { useAppStore, type AppSettings } from '@/stores/use-app-store'
+import { setCachedCurrencies } from '@/lib/pos-cache'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -279,6 +280,10 @@ export function SettingsView() {
         }
       }
       toast.success('Configuración guardada')
+      // Refresh currencies cache (toggling multi-currency may add/remove currencies)
+      api.get<{ id: string; code: string; symbol: string; isBase: boolean }[]>('/api/currencies')
+        .then((c) => { if (Array.isArray(c)) setCachedCurrencies(c) })
+        .catch(() => {})
     } catch {
       toast.error('Error al guardar configuración')
     } finally {

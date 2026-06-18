@@ -43,14 +43,10 @@ import { useCurrency } from '@/hooks/use-currency'
 import { FALLBACK_METHODS } from '@/lib/payment-methods'
 import { calcCartTotals, formatRefPrecision } from '@/lib/currency-conversion'
 import { getCurrencyForCountry } from '@/lib/country-currency'
+import { getCachedMethods, getCachedCurrencies, getCachedOpenRegId, setCachedMethods, setCachedCurrencies, setCachedOpenRegId } from '@/lib/pos-cache'
 
 interface PosPaymentModalProps {
   onClose: () => void
-  preloadedData?: {
-    currencies: { id: string; code: string; symbol: string; isBase: boolean }[]
-    openCashRegId: string | null
-    paymentMethods: PaymentMethodItem[]
-  }
 }
 
 interface PaymentMethodItem {
@@ -99,10 +95,9 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   const [reference, setReference] = useState('')
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
-  const [currencies, setCurrencies] = useState<{ id: string; code: string; symbol: string; isBase: boolean }[]>(preloadedData?.currencies || [])
-  const [openCashRegId, setOpenCashRegId] = useState<string | null>(preloadedData?.openCashRegId || null)
-  const [dbMethods, setDbMethods] = useState<PaymentMethodItem[]>(preloadedData?.paymentMethods || [])
-  const [preloaded, setPreloaded] = useState(!!preloadedData)
+  const [currencies, setCurrencies] = useState<{ id: string; code: string; symbol: string; isBase: boolean }[]>(() => getCachedCurrencies() || [])
+  const [openCashRegId, setOpenCashRegId] = useState<string | null>(() => getCachedOpenRegId())
+  const [dbMethods, setDbMethods] = useState<PaymentMethodItem[]>(() => getCachedMethods() || [])
 
   // Client selection
   const [clients, setClients] = useState<ClientOption[]>([])
@@ -176,44 +171,21 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
     }
   }, [method, isLocalMethod, totalLocal, total])
 
-  // Load currencies, open cash register, clients, and payment methods on mount
-  // If preloaded from parent, only fetch clients (the rest is already available)
+  // Load clients on mount; methods, currencies & register come from localStorage cache
+  // (populated by settings-initializer on app startup and kept in sync on mutations)
   useEffect(() => {
-    if (preloaded) {
-      // Only fetch clients — everything else was preloaded
-      api.get<ClientOption[]>('/api/clients')
-        .then((clients) => { if (Array.isArray(clients)) setClients(clients) })
-        .catch(() => {})
-      // Set default method from preloaded data
+    api.get<ClientOption[]>('/api/clients')
+      .then((clients) => { if (Array.isArray(clients)) setClients(clients) })
+      .catch(() => {})
+  }, [])
+
+  // Set default method once from cache (only if none selected yet)
+  useEffect(() => {
+    if (!method && dbMethods.length > 0) {
       const enabled = dbMethods.filter(m => m.enabled)
-      if (enabled.length > 0 && !method) setMethod(enabled[0].code)
-      return
+      if (enabled.length > 0) setMethod(enabled[0].code)
     }
-    // Fallback: fetch everything (modal opened without preloaded data)
-    Promise.all([
-      api.get<{ id: string; code: string; symbol: string; isBase: boolean }[]>('/api/currencies'),
-      api.get<Array<{ id: string; status: string }>>('/api/cash-register'),
-      api.get<ClientOption[]>('/api/clients'),
-      api.get<PaymentMethodItem[]>(`/api/payment-methods?country=${country}`),
-    ]).then(([currencies, registers, clients, methods]) => {
-      setCurrencies(Array.isArray(currencies) ? currencies : [])
-      const safeRegisters = Array.isArray(registers) ? registers : []
-      const openReg = safeRegisters.find(r => r.status === 'abierta')
-      if (openReg) setOpenCashRegId(openReg.id)
-      if (Array.isArray(clients)) setClients(clients)
-      if (Array.isArray(methods) && methods.length > 0) {
-        const enabled = methods.filter((m: PaymentMethodItem) => m.enabled)
-        setDbMethods(methods)
-        if (enabled.length > 0) setMethod(enabled[0].code)
-      } else {
-        setDbMethods(FALLBACK_METHODS)
-        setMethod(FALLBACK_METHODS[0]?.code || 'divisas')
-      }
-    }).catch(() => {
-      setDbMethods(FALLBACK_METHODS)
-      setMethod(FALLBACK_METHODS[0]?.code || 'divisas')
-    })
-  }, [country])
+  }, [dbMethods, method])
 
   // Create new client
   const handleCreateClient = async () => {

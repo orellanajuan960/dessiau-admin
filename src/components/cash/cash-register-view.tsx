@@ -6,6 +6,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { useCurrency } from '@/hooks/use-currency'
 import { useAppStore, useSetting } from '@/stores/use-app-store'
 import { getCurrencyForCountry } from '@/lib/country-currency'
+import { setCachedOpenRegId } from '@/lib/pos-cache'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
@@ -471,6 +472,10 @@ export function CashRegisterView() {
         branchId: targetBranch,
       })
       toast.success('Caja abierta exitosamente')
+      // Update POS cache so payment modal picks up the new register
+      const regs = await api.get<Array<{ id: string; status: string }>>('/api/cash-register').catch(() => [])
+      const newOpen = (Array.isArray(regs) ? regs : []).find(r => r.status === 'abierta')
+      setCachedOpenRegId(newOpen?.id || null)
       setShowOpen(false)
       setRegisterName('')
       setSelectedUserId('')
@@ -558,6 +563,8 @@ export function CashRegisterView() {
         actual: parseFloat(closeActual),
       })
       toast.success('Caja cerrada exitosamente')
+      // Clear POS cache — no open register anymore
+      setCachedOpenRegId(null)
       setShowClose(false)
       setCloseRegId(null)
       setCloseActual('')
@@ -660,6 +667,7 @@ export function CashRegisterView() {
         branchId: filterBranchId || undefined,
       })
       toast.success(result.message)
+      setCachedOpenRegId(null)
       fetchData(filterBranchId)
     } catch {
       toast.error('Error al cerrar todas las cajas')

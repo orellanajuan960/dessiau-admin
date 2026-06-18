@@ -6,6 +6,7 @@ import { useSetting, useAppStore } from '@/stores/use-app-store'
 import { useAuth } from '@/hooks/use-auth'
 import { PosCart } from './pos-cart'
 import { PosPaymentModal } from './pos-payment-modal'
+import { setCachedOpenRegId } from '@/lib/pos-cache'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -52,11 +53,6 @@ export function PosTerminal() {
   const [products, setProducts] = useState<ProductWithInventory[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [showPayment, setShowPayment] = useState(false)
-  const [paymentPreload, setPaymentPreload] = useState<{
-    currencies: { id: string; code: string; symbol: string; isBase: boolean }[]
-    openCashRegId: string | null
-    paymentMethods: { code: string; name: string; icon: string; enabled: boolean; needsReference: boolean; isLocalCurrency: boolean; isCash: boolean; isCredit: boolean }[]
-  } | null>(null)
   const [loading, setLoading] = useState(true)
   const [cartOpen, setCartOpen] = useState(false)
   const [showBarcodeInput, setShowBarcodeInput] = useState(false)
@@ -96,15 +92,20 @@ export function PosTerminal() {
     : []
   const isCashier = user?.role === 'cajero'
 
-  // Check if there's an open cash register (blocks cashiers)
+  // Check if there's an open cash register (blocks cashiers) + cache the ID
   useEffect(() => {
     if (!user?.id) return
     api.get<Array<{ id: string; status: string }>>('/api/cash-register')
       .then((registers) => {
-        const hasOpen = registers?.some((r) => r.status === 'abierta') ?? false
-        setCajaOpen(hasOpen)
+        const safeRegisters = Array.isArray(registers) ? registers : []
+        const openReg = safeRegisters.find(r => r.status === 'abierta')
+        setCachedOpenRegId(openReg?.id || null)
+        setCajaOpen(!!openReg)
       })
-      .catch(() => setCajaOpen(false))
+      .catch(() => {
+        setCachedOpenRegId(null)
+        setCajaOpen(false)
+      })
       .finally(() => setCheckingCaja(false))
   }, [user?.id, selectedBranchId])
 
@@ -114,32 +115,17 @@ export function PosTerminal() {
     const interval = setInterval(() => {
       api.get<Array<{ id: string; status: string }>>('/api/cash-register')
         .then((registers) => {
-          const hasOpen = registers?.some((r) => r.status === 'abierta') ?? false
-          if (hasOpen) setCajaOpen(true)
+          const safeRegisters = Array.isArray(registers) ? registers : []
+          const openReg = safeRegisters.find(r => r.status === 'abierta')
+          if (openReg) {
+            setCachedOpenRegId(openReg.id)
+            setCajaOpen(true)
+          }
         })
         .catch(() => {})
     }, 30000)
     return () => clearInterval(interval)
   }, [cajaOpen])
-
-  // Preload payment modal data (methods, currencies, open register) on mount
-  useEffect(() => {
-    if (!cajaOpen) return
-    const c = country || 'VE'
-    Promise.all([
-      api.get<{ id: string; code: string; symbol: string; isBase: boolean }[]>('/api/currencies'),
-      api.get<Array<{ id: string; status: string }>>('/api/cash-register'),
-      api.get<{ code: string; name: string; icon: string; enabled: boolean; needsReference: boolean; isLocalCurrency: boolean; isCash: boolean; isCredit: boolean }[]>(`/api/payment-methods?country=${c}`),
-    ]).then(([currencies, registers, methods]) => {
-      const safeRegisters = Array.isArray(registers) ? registers : []
-      const openReg = safeRegisters.find(r => r.status === 'abierta')
-      setPaymentPreload({
-        currencies: Array.isArray(currencies) ? currencies : [],
-        openCashRegId: openReg?.id || null,
-        paymentMethods: Array.isArray(methods) ? methods : [],
-      })
-    }).catch(() => {})
-  }, [cajaOpen, country])
 
   // Validate saved cart against current branch on mount
   useEffect(() => {
@@ -757,7 +743,7 @@ export function PosTerminal() {
       {!isMobile && cartContent}
 
       {/* Payment Modal */}
-      {showPayment && <PosPaymentModal onClose={handlePaymentSuccess} preloadedData={paymentPreload || undefined} />}
+      {showPayment && <PosPaymentModal onClose={handlePaymentSuccess} />}
 
       {/* Camera Barcode Scanner */}
       <BarcodeScannerDialog

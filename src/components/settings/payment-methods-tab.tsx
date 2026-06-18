@@ -48,6 +48,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { getCurrencyForCountry } from '@/lib/country-currency'
+import { setCachedMethods } from '@/lib/pos-cache'
 
 interface PaymentMethodItem {
   id: string
@@ -129,7 +130,11 @@ export function PaymentMethodsTab({ country }: PaymentMethodsTabProps) {
         id: method.id,
         enabled: !method.enabled,
       })
-      setMethods(prev => prev.map(m => m.id === updated.id ? updated : m))
+      setMethods(prev => {
+        const next = prev.map(m => m.id === updated.id ? updated : m)
+        setCachedMethods(next)
+        return next
+      })
       toast.success(`${updated.name} ${updated.enabled ? 'activado' : 'desactivado'}`)
     } catch {
       toast.error('Error al actualizar método')
@@ -159,7 +164,11 @@ export function PaymentMethodsTab({ country }: PaymentMethodsTabProps) {
         isCredit: newIsCredit,
         countries: 'ALL',
       })
-      setMethods(prev => [...prev, created])
+      setMethods(prev => {
+        const next = [...prev, created]
+        setCachedMethods(next)
+        return next
+      })
       setShowCreateDialog(false)
       resetCreateForm()
       toast.success(`Método "${created.name}" creado`)
@@ -175,7 +184,11 @@ export function PaymentMethodsTab({ country }: PaymentMethodsTabProps) {
     setDeleting(true)
     try {
       await api.del(`/api/payment-methods?id=${deleteTarget.id}`)
-      setMethods(prev => prev.filter(m => m.id !== deleteTarget.id))
+      setMethods(prev => {
+        const next = prev.filter(m => m.id !== deleteTarget.id)
+        setCachedMethods(next)
+        return next
+      })
       toast.success(`${deleteTarget.name} eliminado`)
     } catch {
       toast.error('Error al eliminar método')

@@ -7,6 +7,7 @@ import { applyBothColors } from '@/components/settings/color-picker'
 import { setCustomPermissions, type UserPermissions } from '@/lib/permissions'
 import { useTheme } from 'next-themes'
 import type { AppSettings } from '@/stores/use-app-store'
+import { setCachedMethods, setCachedCurrencies, type CachedMethod, type CachedCurrency } from '@/lib/pos-cache'
 
 /** Update the browser favicon dynamically */
 function setFavicon(url: string) {
@@ -35,6 +36,7 @@ interface SettingsData {
   address: string
   baseCurrencyId: string
   referenceCurrency: string
+  country: string
   usdRate: number
   eurRate: number
   customRate: number
@@ -219,6 +221,15 @@ export function SettingsInitializer() {
               setCustomPermissions(data.permissions)
             }
           })
+          .catch(() => {})
+
+        // Cache payment methods & currencies for POS (instant modal open)
+        const country = s?.country || 'VE'
+        api.get<CachedMethod[]>(`/api/payment-methods?country=${country}`)
+          .then((methods) => { if (Array.isArray(methods) && methods.length) setCachedMethods(methods) })
+          .catch(() => {})
+        api.get<CachedCurrency[]>('/api/currencies')
+          .then((currencies) => { if (Array.isArray(currencies)) setCachedCurrencies(currencies) })
           .catch(() => {})
       } catch {
         // Silently fail — use defaults from globals.css
