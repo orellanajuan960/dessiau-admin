@@ -247,7 +247,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
       toast.error('El monto debe ser mayor a cero')
       return
     }
-    if (!isLocalMethod && parseFloat(amount) > total && !selectedMethod?.isCash) {
+    if (!isLocalMethod && parseFloat(amount) > total && !selectedMethod?.isCash && !selectedMethod?.isCredit) {
       toast.error('El monto excede el total')
       return
     }
