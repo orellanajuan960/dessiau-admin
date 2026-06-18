@@ -597,12 +597,12 @@ export function PosTerminal() {
                   )}
                 </Button>
               </DrawerTrigger>
-              <DrawerContent>
-                <DrawerHeader>
+              <DrawerContent className="flex flex-col">
+                <DrawerHeader className="shrink-0">
                   <DrawerTitle>Carrito</DrawerTitle>
                   <DrawerDescription>{itemCount} productos · Total: {multiEnabledCurrency ? `${baseSym} ${totalLocal.toFixed(2)}` : `${currencySymbol}${total.toFixed(2)}`}</DrawerDescription>
                 </DrawerHeader>
-                <div className="px-4 pb-4 overflow-auto max-h-[60vh]">
+                <div className="flex-1 min-h-0 px-4 pb-4 overflow-hidden">
                   {cartContent}
                 </div>
               </DrawerContent>
