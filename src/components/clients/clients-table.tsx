@@ -481,14 +481,46 @@ export function ClientsTable() {
     }
   }
 
+  // Compute correct payment amount from balanceByCurrency (avoids using wrong pendingBalance)
+  const computePaymentAmount = (client: Client, toLocal: boolean): string => {
+    const byCurrency = client.balanceByCurrency || {}
+    const entries = Object.entries(byCurrency).filter(([, amt]) => amt > 0)
+    if (entries.length === 0) {
+      // Fallback to pendingBalance
+      return toLocal && exchangeRate > 0
+        ? (client.pendingBalance * exchangeRate).toFixed(2)
+        : client.pendingBalance.toFixed(2)
+    }
+    let total = 0
+    for (const [code, amt] of entries) {
+      if (toLocal) {
+        // Convert everything to local currency
+        if (code === baseCode || !code) {
+          total += amt
+        } else {
+          total += amt * exchangeRate
+        }
+      } else {
+        // Convert everything to reference currency
+        if (code === baseCode || !code) {
+          total += exchangeRate > 0 ? amt / exchangeRate : amt
+        } else {
+          total += amt
+        }
+      }
+    }
+    return (Math.round(total * 100) / 100).toFixed(2)
+  }
+
   const openPayment = (client: Client) => {
     setPaymentClient(client)
     // Set default to first available non-credit method
     const firstNonCredit = paymentMethods.find(m => !m.isCredit)
-    setPaymentMethod(firstNonCredit?.code || paymentMethods[0]?.code || '')
+    const methodCode = firstNonCredit?.code || paymentMethods[0]?.code || ''
+    setPaymentMethod(methodCode)
     setPaymentReference('')
-    // Set amount in reference currency by default
-    setPaymentAmount(client.pendingBalance.toFixed(2))
+    const isLocal = firstNonCredit?.isLocalCurrency ?? false
+    setPaymentAmount(computePaymentAmount(client, isLocal))
     setShowPaymentDialog(true)
   }
 
@@ -499,11 +531,7 @@ export function ClientsTable() {
     if (paymentClient) {
       const pm = paymentMethods.find(m => m.code === methodCode)
       const isLocal = pm?.isLocalCurrency ?? false
-      if (isLocal && exchangeRate > 0) {
-        setPaymentAmount((paymentClient.pendingBalance * exchangeRate).toFixed(2))
-      } else {
-        setPaymentAmount(paymentClient.pendingBalance.toFixed(2))
-      }
+      setPaymentAmount(computePaymentAmount(paymentClient, isLocal))
     }
   }
 
