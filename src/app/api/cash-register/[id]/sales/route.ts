@@ -1,9 +1,21 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { getPaymentMethodsFromDB, FALLBACK_METHODS } from '@/lib/payment-methods'
+import { convertToRefCurrency, calcCartTotals } from '@/lib/currency-conversion'
+import { getCurrencyForCountry } from '@/lib/country-currency'
 
 function roundTwo(n: number): number {
   return Math.round(n * 100) / 100
+}
+
+/** Convert a lineTotal from its currency to local (base) currency */
+function lineToLocal(lineTotal: number, currencyCode: string, localCode: string, refCode: string, exRate: number, eurRate: number, usdRate: number, multiCurrency: boolean): number {
+  if (!multiCurrency || exRate <= 0 || !currencyCode) return lineTotal
+  // Same as local — no conversion
+  if (currencyCode === localCode) return lineTotal
+  // Convert to ref first, then to local
+  const inRef = convertToRefCurrency(lineTotal, currencyCode, refCode, localCode, exRate, eurRate, usdRate)
+  return inRef * exRate
 }
 
 export async function GET(
@@ -201,7 +213,21 @@ export async function GET(
     }
 
     // ---------------------------------------------------------------
-    // 3) Build full sales list (exclude credit-only sales — they appear in creditSales)
+    // 3) Load settings for currency conversion
+    // ---------------------------------------------------------------
+    const settings = await db.settings.findFirst()
+    const country = settings?.country || 'VE'
+    const localInfo = getCurrencyForCountry(country)
+    const localCode = localInfo?.code || ''
+    const refCode = settings?.referenceCurrency || 'USD'
+    const exRate = settings?.exchangeRate || 0
+    const eurRate = settings?.eurRate || 0
+    const usdRate = settings?.usdRate || 0
+    const multiCurrency = settings?.multiCurrencyEnabled === true
+
+    // ---------------------------------------------------------------
+    // 4) Build full sales list (exclude credit-only sales — they appear in creditSales)
+    //     Recalculate total from lines converting to local currency
     // ---------------------------------------------------------------
     const salesList = sales
       .filter((sale) => {
@@ -212,31 +238,40 @@ export async function GET(
         })
         return !allCredit
       })
-      .map((sale) => ({
-      id: sale.id,
-      date: sale.date.toISOString(),
-      number: sale.number ?? '',
-      total: roundTwo(sale.total),
-      status: sale.status,
-      clientName: sale.client?.name ?? 'Consumidor final',
-      userName: sale.user?.name ?? '',
-      payments: sale.payments.map((p) => ({
-        method: p.method,
-        amount: roundTwo(p.amount),
-        currencyCode: p.currency?.code ?? '',
-        reference: p.reference ?? '',
-      })),
-      products: sale.lines.map((l) => ({
-        name: l.product?.name ?? 'Producto eliminado',
-        quantity: l.quantity,
-        lineTotal: roundTwo(l.lineTotal),
-        // Use SaleLine.currencyCode first (set at sale time), fallback to product's current currency
-        currencyCode: l.currencyCode || l.product?.currency?.code || '',
-      })),
-    }))
+      .map((sale) => {
+        // Recalculate totalLocal from lines — converts USD/EUR items to local currency
+        let totalLocal = 0
+        const products = sale.lines.map((l) => {
+          const code = l.currencyCode || l.product?.currency?.code || ''
+          const localAmt = lineToLocal(l.lineTotal, code, localCode, refCode, exRate, eurRate, usdRate, multiCurrency)
+          totalLocal += localAmt
+          return {
+            name: l.product?.name ?? 'Producto eliminado',
+            quantity: l.quantity,
+            lineTotal: roundTwo(l.lineTotal),
+            currencyCode: code,
+          }
+        })
+        return {
+          id: sale.id,
+          date: sale.date.toISOString(),
+          number: sale.number ?? '',
+          total: roundTwo(totalLocal),
+          status: sale.status,
+          clientName: sale.client?.name ?? 'Consumidor final',
+          userName: sale.user?.name ?? '',
+          payments: sale.payments.map((p) => ({
+            method: p.method,
+            amount: roundTwo(p.amount),
+            currencyCode: p.currency?.code ?? '',
+            reference: p.reference ?? '',
+          })),
+          products,
+        }
+      })
 
     // ---------------------------------------------------------------
-    // 4) Compute totals (all non-credit)
+    // 5) Compute totals (all non-credit) — also recalculated from lines
     // ---------------------------------------------------------------
     let totalSales = 0
     let totalCash = 0
@@ -244,7 +279,13 @@ export async function GET(
     let totalOther = 0
 
     for (const sale of sales) {
-      totalSales += sale.total
+      // Recalculate totalSales from lines (converts to local currency)
+      let saleTotalLocal = 0
+      for (const l of sale.lines) {
+        const code = l.currencyCode || l.product?.currency?.code || ''
+        saleTotalLocal += lineToLocal(l.lineTotal, code, localCode, refCode, exRate, eurRate, usdRate, multiCurrency)
+      }
+      totalSales += roundTwo(saleTotalLocal)
 
       for (const payment of sale.payments) {
         const def = getMethodDef(payment.method)

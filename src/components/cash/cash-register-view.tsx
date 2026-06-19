@@ -938,11 +938,11 @@ export function CashRegisterView() {
                                           <span className="font-medium">{sale.clientName}</span>
                                           <span className="text-muted-foreground ml-1.5">#{sale.number}</span>
                                         </div>
-                                        <span className="font-bold tabular-nums shrink-0">{fmtWith(sale.total, sale.payments[0]?.currencyCode || undefined)}</span>
+                                        <span className="font-bold tabular-nums shrink-0">{fmtBase(sale.total)}</span>
                                       </div>
                                       <div className="text-muted-foreground space-y-0.5">
                                         {sale.products.map((p, i) => (
-                                          <p key={i}>{p.name} x{p.quantity} — {fmtProductPrice(p.lineTotal, p.currencyCode)}</p>
+                                          <p key={i}>{p.name} x{p.quantity} — {fmtProductPrice(p.lineTotal, p.currencyCode)}{rate > 1 && p.currencyCode && p.currencyCode !== baseCode ? ` → ${fmtBase(Math.round(p.lineTotal * rate * 100) / 100)}` : ''}</p>
                                         ))}
                                       </div>
                                       <div className="flex flex-wrap gap-1.5 pt-0.5">
@@ -1615,11 +1615,11 @@ export function CashRegisterView() {
                                     <span className="font-medium">{sale.clientName}</span>
                                     <span className="text-muted-foreground ml-1.5">#{sale.number}</span>
                                   </div>
-                                  <span className="font-bold tabular-nums shrink-0">{fmtWith(sale.total, sale.payments[0]?.currencyCode || undefined)}</span>
+                                  <span className="font-bold tabular-nums shrink-0">{fmtBase(sale.total)}</span>
                                 </div>
                                 <div className="text-muted-foreground space-y-0.5">
                                   {sale.products.map((p, i) => (
-                                    <p key={i}>{p.name} x{p.quantity} — {fmtProductPrice(p.lineTotal, p.currencyCode)}</p>
+                                    <p key={i}>{p.name} x{p.quantity} — {fmtProductPrice(p.lineTotal, p.currencyCode)}{rate > 1 && p.currencyCode && p.currencyCode !== baseCode ? ` → ${fmtBase(Math.round(p.lineTotal * rate * 100) / 100)}` : ''}</p>
                                   ))}
                                 </div>
                                 <div className="flex flex-wrap gap-1.5 pt-0.5">
