@@ -89,8 +89,7 @@ export async function POST(
       // When the user pays the full balance computed from balanceByCurrency (using the current rate),
       // but receivables were stored with a different rate, a tiny remainder may be left on the last
       // receivable even after the payment is fully distributed (remaining = 0).
-      // Standard accounting practice: absorb it into the last touched receivable.
-      if (updated.length > 0 && amount >= totalPending * 0.995) {
+      if (updated.length > 0) {
         const lastDetail = updated[updated.length - 1]
         if (lastDetail.newBalance > 0 && lastDetail.newBalance <= 0.10) {
           const lastReceivable = receivables.find(r => r.id === lastDetail.receivableId)
