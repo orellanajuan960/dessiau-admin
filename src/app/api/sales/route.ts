@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { resolveBranchId, branchFromBody } from '@/lib/resolve-branch'
 import { formatCurrency } from '@/lib/currency'
 import { getPaymentMethodsFromDB, FALLBACK_METHODS } from '@/lib/payment-methods'
+import { convertToRefCurrency } from '@/lib/currency-conversion'
+import { getCurrencyForCountry } from '@/lib/country-currency'
 
 export async function GET(request: NextRequest) {
   try {
@@ -113,17 +115,36 @@ export async function POST(request: NextRequest) {
       : []
     const currencyMap = new Map(currencies.map((c) => [c.id, c.code]))
 
-    // Calculate totals
+    // Determine local and reference currency for conversion
+    const country = settings?.country || 'VE'
+    const localInfo = getCurrencyForCountry(country)
+    const localCode = localInfo?.code || ''
+    const refCode = settings?.referenceCurrency || 'USD'
+    const exRate = settings?.exchangeRate || 0
+    const eurRate = settings?.eurRate || 0
+    const usdRate = settings?.usdRate || 0
+    const multiCurrency = settings?.multiCurrencyEnabled === true
+
+    // Calculate totals — convert each line to reference currency before summing
     let total = 0
     const saleLinesData = lines.map((line: { productId: string; quantity: number; unitPrice: number }) => {
       const product = productMap.get(line.productId)
       const unitCost = product?.costAvg || 0
       const unitPrice = line.unitPrice || product?.price || 0
-      const qty = Math.round(line.quantity * 10000) / 10000 // Fix floating-point precision (e.g. 20 - 2 = 17.99999999)
+      const qty = Math.round(line.quantity * 10000) / 10000 // Fix floating-point precision
       const lineTotal = qty * unitPrice
       const lineProfit = qty * (unitPrice - unitCost)
       const currencyCode = product?.currencyId ? (currencyMap.get(product.currencyId) || '') : ''
-      total += lineTotal
+
+      // Convert lineTotal to reference currency for the sale total
+      let lineTotalInRef = lineTotal
+      if (multiCurrency && exRate > 0) {
+        lineTotalInRef = convertToRefCurrency(
+          lineTotal, currencyCode, refCode, localCode, exRate, eurRate, usdRate,
+        )
+      }
+      total += lineTotalInRef
+
       return {
         productId: line.productId,
         quantity: qty,
