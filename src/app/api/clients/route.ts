@@ -83,8 +83,8 @@ export async function GET(request: NextRequest) {
         }
 
         // Compute payment ratio: how much of the original receivable is still pending
-        // This handles partial payments correctly
-        const ratio = r.amount > 0 ? r.pendingBalance / r.amount : 1
+        // Clamp to max 1 to prevent inflation from rounding mismatches between amount and pendingBalance
+        const ratio = r.amount > 0 ? Math.min(r.pendingBalance / r.amount, 1) : 1
 
         // Apply ratio to each currency's line total
         for (const [code, lineTotal] of Object.entries(lineTotalsByCurrency)) {
