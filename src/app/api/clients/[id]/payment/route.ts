@@ -87,21 +87,22 @@ export async function POST(
 
       // Absorb small residual from exchange-rate rounding differences.
       // When the user pays the full balance computed from balanceByCurrency (using the current rate),
-      // but receivables were stored with a different rate, a tiny remainder may be left.
+      // but receivables were stored with a different rate, a tiny remainder may be left on the last
+      // receivable even after the payment is fully distributed (remaining = 0).
       // Standard accounting practice: absorb it into the last touched receivable.
-      if (remaining > 0 && remaining <= 0.10 && updated.length > 0 && amount >= totalPending * 0.995) {
-        const lastIdx = updated.length - 1
-        const lastDetail = updated[lastIdx]
-        const lastReceivable = receivables.find(r => r.id === lastDetail.receivableId)
-        if (lastReceivable) {
-          const absorbedNewBalance = 0
-          await tx.accountReceivable.update({
-            where: { id: lastReceivable.id },
-            data: { pendingBalance: absorbedNewBalance, status: 'pagada' },
-          })
-          lastDetail.newBalance = absorbedNewBalance
-          lastDetail.amountApplied = Math.round((lastDetail.amountApplied + remaining) * 100) / 100
-          remaining = 0
+      if (updated.length > 0 && amount >= totalPending * 0.995) {
+        const lastDetail = updated[updated.length - 1]
+        if (lastDetail.newBalance > 0 && lastDetail.newBalance <= 0.10) {
+          const lastReceivable = receivables.find(r => r.id === lastDetail.receivableId)
+          if (lastReceivable) {
+            const residual = lastDetail.newBalance
+            await tx.accountReceivable.update({
+              where: { id: lastReceivable.id },
+              data: { pendingBalance: 0, status: 'pagada' },
+            })
+            lastDetail.newBalance = 0
+            lastDetail.amountApplied = Math.round((lastDetail.amountApplied + residual) * 100) / 100
+          }
         }
       }
 
