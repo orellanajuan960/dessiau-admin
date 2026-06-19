@@ -75,36 +75,29 @@ export async function GET(request: NextRequest) {
       for (const r of client.receivables) {
         if (r.pendingBalance <= 0) continue
 
-        const lines = (r as any).sale?.lines || []
-        // Determine the sale lines' currency
-        const firstLineCode = lines.length > 0
-          ? (lines[0].currencyCode || (lines[0] as any).product?.currency?.code || '')
-          : ''
         const recvCode = r.currency?.code || ''
+        const lines = (r as any).sale?.lines || []
 
-        // Case 1: Receivable currency matches sale lines currency (new format)
-        // e.g. both VES — use pendingBalance directly
-        if (recvCode && firstLineCode && recvCode === firstLineCode) {
+        // Check if ANY sale line matches the receivable's currency
+        const hasMatchingLine = lines.some(
+          (l: { currencyCode?: string; product?: { currency?: { code: string } } }) =>
+            l.currencyCode === recvCode || (l as any).product?.currency?.code === recvCode
+        )
+
+        if (hasMatchingLine) {
+          // Receivable is stored in a currency that matches its products (new format)
+          // Use pendingBalance directly — no conversion needed
           balanceByCurrency[recvCode] = (balanceByCurrency[recvCode] || 0) + r.pendingBalance
-        }
-        // Case 2: Receivable in USD but lines in VES (old format)
-        // Convert pendingBalance from USD to VES
-        else if (recvCode === refCode && firstLineCode === localCode && exRate > 0) {
+        } else if (recvCode === refCode && exRate > 0) {
+          // Old format: receivable stored in USD but products are in VES
+          // Convert the USD amount back to VES
           const inLocal = Math.round(r.pendingBalance * exRate * 100) / 100
           balanceByCurrency[localCode] = (balanceByCurrency[localCode] || 0) + inLocal
-        }
-        // Case 3: Receivable in VES but lines in USD
-        else if (recvCode === localCode && firstLineCode === refCode && exRate > 0) {
-          balanceByCurrency[localCode] = (balanceByCurrency[localCode] || 0) + r.pendingBalance
-        }
-        // Case 4: No lines or unknown currencies — use receivable's currency if available
-        else if (recvCode) {
+        } else if (recvCode) {
+          // Fallback: use the receivable's own currency
           balanceByCurrency[recvCode] = (balanceByCurrency[recvCode] || 0) + r.pendingBalance
-        }
-        // Case 5: No currency info at all — default to base currency
-        else if (firstLineCode) {
-          balanceByCurrency[firstLineCode] = (balanceByCurrency[firstLineCode] || 0) + r.pendingBalance
         } else {
+          // No currency info at all — default to base currency
           balanceByCurrency[localCode] = (balanceByCurrency[localCode] || 0) + r.pendingBalance
         }
       }

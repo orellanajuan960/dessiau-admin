@@ -264,42 +264,66 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Handle credit sale - create account receivable in the sale's original currency
+      // Handle credit sale — create account receivable(s) in original currency
+      // Bs products → VES receivable (no conversion)
+      // USD products → USD receivable
+      // Mixed → one VES receivable + one USD receivable
       const creditPayments = payments.filter((p: { method: string }) => creditCodes.has(p.method))
       for (const cp of creditPayments) {
         if (clientId) {
-          // Determine currency from sale lines — if all products share one currency, use it
           const lineCurrencies = saleLinesData.map(l => l.currencyCode).filter(Boolean)
           const uniqueCurrencies = [...new Set(lineCurrencies)]
 
-          let creditAmount: number
-          let creditCurrencyId: string
-
-          if (uniqueCurrencies.length === 1) {
-            // Single-currency sale: store receivable in that currency (no Bs→USD→Bs)
-            const code = uniqueCurrencies[0]
+          if (uniqueCurrencies.length <= 1) {
+            // Single-currency sale (or no currency): one receivable in that currency
+            const code = uniqueCurrencies[0] || localCode
             const cur = await tx.currency.findFirst({ where: { code } })
-            creditCurrencyId = cur?.id || refCurrency?.id || ''
-            creditAmount = Math.round(
-              saleLinesData.reduce((s, l) => s + (l.currencyCode === code ? l.lineTotal : 0), 0) * 100
+            const creditCurrencyId = cur?.id || ''
+            const creditAmount = Math.round(
+              saleLinesData.reduce((s, l) => s + l.lineTotal, 0) * 100
             ) / 100
-          } else {
-            // Mixed-currency sale: use reference currency
-            creditCurrencyId = cp.currencyId || refCurrency?.id || ''
-            creditAmount = Math.round(cp.amount * 100) / 100
-          }
 
-          await tx.accountReceivable.create({
-            data: {
-              clientId,
-              saleId: newSale.id,
-              amount: creditAmount,
-              pendingBalance: creditAmount,
-              status: 'pendiente',
-              currencyId: creditCurrencyId,
-              dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-            },
-          })
+            if (creditAmount > 0 && creditCurrencyId) {
+              await tx.accountReceivable.create({
+                data: {
+                  clientId,
+                  saleId: newSale.id,
+                  amount: creditAmount,
+                  pendingBalance: creditAmount,
+                  status: 'pendiente',
+                  currencyId: creditCurrencyId,
+                  dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+                },
+              })
+            }
+          } else {
+            // Mixed-currency sale: create ONE receivable per currency
+            const totalsByCurrency: Record<string, number> = {}
+            for (const line of saleLinesData) {
+              const code = line.currencyCode || localCode
+              totalsByCurrency[code] = (totalsByCurrency[code] || 0) + line.lineTotal
+            }
+
+            for (const [code, lineTotal] of Object.entries(totalsByCurrency)) {
+              const rounded = Math.round(lineTotal * 100) / 100
+              if (rounded <= 0) continue
+              const cur = await tx.currency.findFirst({ where: { code } })
+              const creditCurrencyId = cur?.id || ''
+              if (!creditCurrencyId) continue
+
+              await tx.accountReceivable.create({
+                data: {
+                  clientId,
+                  saleId: newSale.id,
+                  amount: rounded,
+                  pendingBalance: rounded,
+                  status: 'pendiente',
+                  currencyId: creditCurrencyId,
+                  dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+                },
+              })
+            }
+          }
         }
       }
 
