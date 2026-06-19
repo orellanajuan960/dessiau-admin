@@ -84,11 +84,12 @@ export async function POST(request: NextRequest) {
 
     const insufficientStock: string[] = []
     for (const line of lines) {
+      const qty = Math.round(line.quantity * 10000) / 10000
       const inv = inventoryMap.get(line.productId)
       const availableStock = inv?.stock || 0
-      if (line.quantity > availableStock) {
+      if (qty > availableStock) {
         const product = await db.product.findUnique({ where: { id: line.productId }, select: { name: true } })
-        insufficientStock.push(`"${product?.name || line.productId}": solicitado ${line.quantity}, disponible ${availableStock}`)
+        insufficientStock.push(`"${product?.name || line.productId}": solicitado ${qty}, disponible ${availableStock}`)
       }
     }
 
@@ -118,13 +119,14 @@ export async function POST(request: NextRequest) {
       const product = productMap.get(line.productId)
       const unitCost = product?.costAvg || 0
       const unitPrice = line.unitPrice || product?.price || 0
-      const lineTotal = line.quantity * unitPrice
-      const lineProfit = line.quantity * (unitPrice - unitCost)
+      const qty = Math.round(line.quantity * 10000) / 10000 // Fix floating-point precision (e.g. 20 - 2 = 17.99999999)
+      const lineTotal = qty * unitPrice
+      const lineProfit = qty * (unitPrice - unitCost)
       const currencyCode = product?.currencyId ? (currencyMap.get(product.currencyId) || '') : ''
       total += lineTotal
       return {
         productId: line.productId,
-        quantity: line.quantity,
+        quantity: qty,
         unitPrice,
         unitCost,
         lineTotal: Math.round(lineTotal * 100) / 100,
@@ -172,13 +174,15 @@ export async function POST(request: NextRequest) {
 
       // Deduct inventory stock for each product
       for (const line of lines) {
+        const qty = Math.round(line.quantity * 10000) / 10000
         const inventory = await tx.inventory.findUnique({
           where: { productId_branchId: { productId: line.productId, branchId } },
         })
         if (inventory) {
+          const newStock = Math.round((inventory.stock - qty) * 10000) / 10000
           await tx.inventory.update({
             where: { id: inventory.id },
-            data: { stock: { decrement: line.quantity } },
+            data: { stock: newStock },
           })
         }
       }

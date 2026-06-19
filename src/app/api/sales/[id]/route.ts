@@ -56,13 +56,15 @@ export async function POST(
     const updatedSale = await db.$transaction(async (tx) => {
       // Restore inventory
       for (const line of sale.lines) {
+        const qty = Math.round(line.quantity * 10000) / 10000
         const inventory = await tx.inventory.findUnique({
           where: { productId_branchId: { productId: line.productId, branchId: sale.branchId } },
         })
         if (inventory) {
+          const newStock = Math.round((inventory.stock + qty) * 10000) / 10000
           await tx.inventory.update({
             where: { id: inventory.id },
-            data: { stock: { increment: line.quantity } },
+            data: { stock: newStock },
           })
         }
       }
