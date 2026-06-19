@@ -294,7 +294,7 @@ export function CashRegisterView() {
     const original = fmtWith(lineTotal, currencyCode || undefined)
     if (rate > 1 && currencyCode && currencyCode !== baseCode) {
       const baseAmt = Math.round(lineTotal * rate * 100) / 100
-      return `${original} (~${fmtBase(baseAmt)})`
+      return `${original} — ${fmtBase(baseAmt)}`
     }
     return original
   }
