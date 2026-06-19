@@ -942,7 +942,7 @@ export function CashRegisterView() {
                                       </div>
                                       <div className="text-muted-foreground space-y-0.5">
                                         {sale.products.map((p, i) => (
-                                          <p key={i}>{p.name} x{p.quantity} — {fmtProductPrice(p.lineTotal, p.currencyCode)}{rate > 1 && p.currencyCode && p.currencyCode !== baseCode ? ` → ${fmtBase(Math.round(p.lineTotal * rate * 100) / 100)}` : ''}</p>
+                                          <p key={i}>{p.name} x{p.quantity} — {fmtProductPrice(p.lineTotal, p.currencyCode)}</p>
                                         ))}
                                       </div>
                                       <div className="flex flex-wrap gap-1.5 pt-0.5">
@@ -1619,7 +1619,7 @@ export function CashRegisterView() {
                                 </div>
                                 <div className="text-muted-foreground space-y-0.5">
                                   {sale.products.map((p, i) => (
-                                    <p key={i}>{p.name} x{p.quantity} — {fmtProductPrice(p.lineTotal, p.currencyCode)}{rate > 1 && p.currencyCode && p.currencyCode !== baseCode ? ` → ${fmtBase(Math.round(p.lineTotal * rate * 100) / 100)}` : ''}</p>
+                                    <p key={i}>{p.name} x{p.quantity} — {fmtProductPrice(p.lineTotal, p.currencyCode)}</p>
                                   ))}
                                 </div>
                                 <div className="flex flex-wrap gap-1.5 pt-0.5">
