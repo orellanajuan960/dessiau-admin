@@ -575,7 +575,8 @@ export function ClientsTable() {
       toast.error('El monto debe ser mayor a 0')
       return
     }
-    if (paymentAmountInRef > paymentClient.pendingBalance) {
+    // Allow small tolerance for exchange-rate rounding differences
+    if (paymentAmountInRef > paymentClient.pendingBalance + 0.10) {
       toast.error(`El monto no puede ser mayor al saldo pendiente (${fmtDebt(paymentClient)})`)
       return
     }

@@ -43,7 +43,9 @@ export async function POST(
     }
 
     const totalPending = receivables.reduce((sum, r) => sum + r.pendingBalance, 0)
-    if (amount > totalPending) {
+    // Allow small tolerance for exchange-rate rounding differences (e.g. rate changed since receivable was created)
+    const TOLERANCE = 0.10
+    if (amount > totalPending + TOLERANCE) {
       return NextResponse.json({ error: `El monto excede el total pendiente (${formatCurrency(totalPending, currencyCode)})` }, { status: 400 })
     }
 
@@ -81,6 +83,26 @@ export async function POST(
         })
 
         remaining = Math.round((remaining - applied) * 100) / 100
+      }
+
+      // Absorb small residual from exchange-rate rounding differences.
+      // When the user pays the full balance computed from balanceByCurrency (using the current rate),
+      // but receivables were stored with a different rate, a tiny remainder may be left.
+      // Standard accounting practice: absorb it into the last touched receivable.
+      if (remaining > 0 && remaining <= 0.10 && updated.length > 0 && amount >= totalPending * 0.995) {
+        const lastIdx = updated.length - 1
+        const lastDetail = updated[lastIdx]
+        const lastReceivable = receivables.find(r => r.id === lastDetail.receivableId)
+        if (lastReceivable) {
+          const absorbedNewBalance = 0
+          await tx.accountReceivable.update({
+            where: { id: lastReceivable.id },
+            data: { pendingBalance: absorbedNewBalance, status: 'pagada' },
+          })
+          lastDetail.newBalance = absorbedNewBalance
+          lastDetail.amountApplied = Math.round((lastDetail.amountApplied + remaining) * 100) / 100
+          remaining = 0
+        }
       }
 
       // Create cash movement for ALL payment methods (to show in breakdown + update box total)
