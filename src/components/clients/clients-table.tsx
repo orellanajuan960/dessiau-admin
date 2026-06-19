@@ -167,7 +167,7 @@ export function ClientsTable() {
   const fmtDebt = (client: Client): string => {
     const byCurrency = client.balanceByCurrency || {}
     const entries = Object.entries(byCurrency).filter(([, amt]) => amt > 0)
-    if (entries.length === 0) return fmtWith(client.pendingBalance, baseCode || undefined)
+    if (entries.length === 0) return 'Bs.0,00'
     return entries.map(([code, amt]) => fmtWith(amt, code || baseCode || undefined)).join(' + ')
   }
 
@@ -486,10 +486,7 @@ export function ClientsTable() {
     const byCurrency = client.balanceByCurrency || {}
     const entries = Object.entries(byCurrency).filter(([, amt]) => amt > 0)
     if (entries.length === 0) {
-      // Fallback to pendingBalance
-      return toLocal && exchangeRate > 0
-        ? (client.pendingBalance * exchangeRate).toFixed(2)
-        : client.pendingBalance.toFixed(2)
+      return '0.00'
     }
     let total = 0
     for (const [code, amt] of entries) {
@@ -743,7 +740,7 @@ export function ClientsTable() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((client) => (
             <Card key={client.id} className={`relative overflow-hidden hover:shadow-md transition-shadow ${client.deletedAt ? 'opacity-60' : ''}`}>
-              <div className={`h-1 ${client.pendingBalance > 0 ? 'bg-red-500' : 'bg-green-500'}`} />
+              <div className={`h-1 ${Object.values(client.balanceByCurrency || {}).some(v => v > 0) ? 'bg-red-500' : 'bg-green-500'}`} />
               <CardContent className="p-4 space-y-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
@@ -755,11 +752,11 @@ export function ClientsTable() {
                         Deshabilitado
                       </Badge>
                     )}
-                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${client.pendingBalance > 0
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${Object.values(client.balanceByCurrency || {}).some(v => v > 0)
                       ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400'
                       : 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400'
                     }`}>
-                      {client.pendingBalance > 0
+                      {Object.values(client.balanceByCurrency || {}).some(v => v > 0)
                         ? fmtDebt(client)
                         : 'Sin deuda'
                       }
@@ -793,7 +790,7 @@ export function ClientsTable() {
                     <ShoppingCart className="h-3 w-3" />
                     <span>{client._count.sales} venta{client._count.sales !== 1 ? 's' : ''}</span>
                   </div>
-                  {client.pendingBalance > 0 && (
+                  {Object.values(client.balanceByCurrency || {}).some(v => v > 0) && (
                     <div className="text-red-600 font-medium">
                       Debe: {fmtDebt(client)}
                     </div>
@@ -822,7 +819,7 @@ export function ClientsTable() {
                           <Truck className="h-3.5 w-3.5" />
                         </Button>
                       )}
-                      {client.pendingBalance > 0 && (
+                      {Object.values(client.balanceByCurrency || {}).some(v => v > 0) && (
                         <Button size="sm" variant="outline" className="h-7 text-xs text-primary hover:text-primary" onClick={() => openPayment(client)}>
                           <DollarSign className="mr-1 h-3 w-3" /> Cobrar
                         </Button>
