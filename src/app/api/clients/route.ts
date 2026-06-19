@@ -58,37 +58,54 @@ export async function GET(request: NextRequest) {
       orderBy: { name: 'asc' },
     })
 
+    // Get settings for currency conversion
+    const settings = await db.settings.findFirst()
+    const exRate = settings?.exchangeRate || 0
+    const [refCur, localCur] = await Promise.all([
+      settings?.referenceCurrencyId ? db.currency.findUnique({ where: { id: settings.referenceCurrencyId }, select: { code: true } }) : null,
+      settings?.baseCurrencyId ? db.currency.findUnique({ where: { id: settings.baseCurrencyId }, select: { code: true } }) : null,
+    ])
+    const refCode = refCur?.code || 'USD'
+    const localCode = localCur?.code || 'VES'
+
     // Compute pending balance per currency for each client
     const clientsWithBalance = clients.map(client => {
       const balanceByCurrency: Record<string, number> = {}
-      let totalPendingInRef = 0
 
       for (const r of client.receivables) {
-        const recvCode = r.currency?.code || ''
+        if (r.pendingBalance <= 0) continue
+
         const lines = (r as any).sale?.lines || []
-        if (lines.length === 0) {
-          if (recvCode) balanceByCurrency[recvCode] = (balanceByCurrency[recvCode] || 0) + r.pendingBalance
-          continue
-        }
+        // Determine the sale lines' currency
+        const firstLineCode = lines.length > 0
+          ? (lines[0].currencyCode || (lines[0] as any).product?.currency?.code || '')
+          : ''
+        const recvCode = r.currency?.code || ''
 
-        // Check if receivable's currency matches the sale lines' currency (new format)
-        const lineCodes = [...new Set(lines.map((l: { currencyCode?: string }) => l.currencyCode).filter(Boolean))]
-
-        if (lineCodes.length === 1 && lineCodes[0] === recvCode) {
-          // New format: receivable stored in original currency — use directly, no conversion
+        // Case 1: Receivable currency matches sale lines currency (new format)
+        // e.g. both VES — use pendingBalance directly
+        if (recvCode && firstLineCode && recvCode === firstLineCode) {
           balanceByCurrency[recvCode] = (balanceByCurrency[recvCode] || 0) + r.pendingBalance
+        }
+        // Case 2: Receivable in USD but lines in VES (old format)
+        // Convert pendingBalance from USD to VES
+        else if (recvCode === refCode && firstLineCode === localCode && exRate > 0) {
+          const inLocal = Math.round(r.pendingBalance * exRate * 100) / 100
+          balanceByCurrency[localCode] = (balanceByCurrency[localCode] || 0) + inLocal
+        }
+        // Case 3: Receivable in VES but lines in USD
+        else if (recvCode === localCode && firstLineCode === refCode && exRate > 0) {
+          balanceByCurrency[localCode] = (balanceByCurrency[localCode] || 0) + r.pendingBalance
+        }
+        // Case 4: No lines or unknown currencies — use receivable's currency if available
+        else if (recvCode) {
+          balanceByCurrency[recvCode] = (balanceByCurrency[recvCode] || 0) + r.pendingBalance
+        }
+        // Case 5: No currency info at all — default to base currency
+        else if (firstLineCode) {
+          balanceByCurrency[firstLineCode] = (balanceByCurrency[firstLineCode] || 0) + r.pendingBalance
         } else {
-          // Old format or mixed: derive from sale lines using ratio
-          const lineTotalsByCurrency: Record<string, number> = {}
-          for (const line of lines) {
-            const code = line.currencyCode || (line as any).product?.currency?.code || ''
-            if (!code) continue
-            lineTotalsByCurrency[code] = (lineTotalsByCurrency[code] || 0) + (line.lineTotal || 0)
-          }
-          const ratio = r.amount > 0 ? Math.min(r.pendingBalance / r.amount, 1) : 1
-          for (const [code, lineTotal] of Object.entries(lineTotalsByCurrency)) {
-            balanceByCurrency[code] = (balanceByCurrency[code] || 0) + Math.round(lineTotal * ratio * 100) / 100
-          }
+          balanceByCurrency[localCode] = (balanceByCurrency[localCode] || 0) + r.pendingBalance
         }
       }
 
@@ -96,9 +113,23 @@ export async function GET(request: NextRequest) {
       for (const code of Object.keys(balanceByCurrency)) {
         balanceByCurrency[code] = Math.round(balanceByCurrency[code] * 100) / 100
       }
+
+      // Compute a single pendingBalance total in local currency for backward compat
+      let totalPending = 0
+      for (const [code, amt] of Object.entries(balanceByCurrency)) {
+        if (amt <= 0) continue
+        if (code === localCode) {
+          totalPending += amt
+        } else if (code === refCode && exRate > 0) {
+          totalPending += amt * exRate
+        } else {
+          totalPending += amt
+        }
+      }
+
       return {
         ...client,
-        pendingBalance: Math.round(totalPendingInRef * 100) / 100,
+        pendingBalance: Math.round(totalPending * 100) / 100,
         balanceByCurrency,
       }
     })
