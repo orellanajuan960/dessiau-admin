@@ -535,13 +535,11 @@ export function ClientsTable() {
     }
   }
 
-  // Convert displayed amount to reference currency
-  const paymentAmountInRef = (() => {
-    const parsed = parseFloat(paymentAmount) || 0
-    if (isLocalMethod && exchangeRate > 0) {
-      return Math.round((parsed / exchangeRate) * 100) / 100
-    }
-    return parsed
+  // Compute total debt in display currency for validation
+  const totalDebtInDisplay = (() => {
+    if (!paymentClient) return 0
+    const debt = parseFloat(computePaymentAmount(paymentClient, isLocalMethod))
+    return debt
   })()
 
   const openDispatch = async (client: Client) => {
@@ -575,9 +573,9 @@ export function ClientsTable() {
       toast.error('El monto debe ser mayor a 0')
       return
     }
-    // Allow small tolerance for exchange-rate rounding differences
-    if (paymentAmountInRef > paymentClient.pendingBalance + 0.10) {
-      toast.error(`El monto no puede ser mayor al saldo pendiente (${fmtDebt(paymentClient)})`)
+    // Validate against total debt in display currency (with tolerance for rounding)
+    if (amt > totalDebtInDisplay + 1.00) {
+      toast.error(`El monto no puede ser mayor al saldo pendiente`)
       return
     }
     if (selectedPm?.isCash && !openCashRegId) {
@@ -590,7 +588,7 @@ export function ClientsTable() {
       const displayAmount = parseFloat(paymentAmount) || 0
       const displayCurrencyCode = isLocalMethod ? (baseCode || 'VES') : (referenceCurrency || 'USD')
       await api.post(`/api/clients/${paymentClient.id}/payment`, {
-        amount: paymentAmountInRef,
+        amount: displayAmount,
         displayAmount,
         displayCurrencyCode,
         method: paymentMethod,
@@ -599,7 +597,7 @@ export function ClientsTable() {
         userId: user.id,
         currencyId: baseCurrencyId,
       })
-      const displayLabel = isLocalMethod ? `Bs. ${parseFloat(paymentAmount).toFixed(2)}` : `${fmt(paymentAmountInRef)}`
+      const displayLabel = isLocalMethod ? `Bs. ${displayAmount.toFixed(2)}` : `${fmt(displayAmount)}`
       toast.success(`Cobro de ${displayLabel} registrado exitosamente`)
       setShowPaymentDialog(false)
       fetchClients()
@@ -1330,7 +1328,7 @@ export function ClientsTable() {
               />
               {isLocalMethod && exchangeRate > 0 && (
                 <p className="text-xs text-muted-foreground">
-                  Equivale a {fmt(paymentAmountInRef)} (Tasa: {exchangeRate.toFixed(2)} {baseSym}/{referenceCurrency})
+                  Equivale a {fmt(exchangeRate > 0 ? Math.round(((parseFloat(paymentAmount) || 0) / exchangeRate) * 100) / 100 : 0)} (Tasa: {exchangeRate.toFixed(2)} {baseSym}/{referenceCurrency})
                 </p>
               )}
               <p className="text-xs text-muted-foreground">

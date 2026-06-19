@@ -59,36 +59,36 @@ export async function GET(request: NextRequest) {
     })
 
     // Compute pending balance per currency for each client
-    // The receivable.pendingBalance may be in wrong currency (converted to ref).
-    // We derive the REAL amounts from sale lines and apply the payment ratio.
     const clientsWithBalance = clients.map(client => {
-      const totalPendingBalance = client.receivables.reduce((sum, r) => sum + r.pendingBalance, 0)
       const balanceByCurrency: Record<string, number> = {}
+      let totalPendingInRef = 0
 
       for (const r of client.receivables) {
+        const recvCode = r.currency?.code || ''
         const lines = (r as any).sale?.lines || []
         if (lines.length === 0) {
-          // No lines — fall back to receivable's own currency/balance
-          const code = r.currency?.code || ''
-          if (code) balanceByCurrency[code] = (balanceByCurrency[code] || 0) + r.pendingBalance
+          if (recvCode) balanceByCurrency[recvCode] = (balanceByCurrency[recvCode] || 0) + r.pendingBalance
           continue
         }
 
-        // Compute real line totals grouped by currency
-        const lineTotalsByCurrency: Record<string, number> = {}
-        for (const line of lines) {
-          const code = line.currencyCode || line.product?.currency?.code || ''
-          if (!code) continue
-          lineTotalsByCurrency[code] = (lineTotalsByCurrency[code] || 0) + (line.lineTotal || 0)
-        }
+        // Check if receivable's currency matches the sale lines' currency (new format)
+        const lineCodes = [...new Set(lines.map((l: { currencyCode?: string }) => l.currencyCode).filter(Boolean))]
 
-        // Compute payment ratio: how much of the original receivable is still pending
-        // Clamp to max 1 to prevent inflation from rounding mismatches between amount and pendingBalance
-        const ratio = r.amount > 0 ? Math.min(r.pendingBalance / r.amount, 1) : 1
-
-        // Apply ratio to each currency's line total
-        for (const [code, lineTotal] of Object.entries(lineTotalsByCurrency)) {
-          balanceByCurrency[code] = (balanceByCurrency[code] || 0) + Math.round(lineTotal * ratio * 100) / 100
+        if (lineCodes.length === 1 && lineCodes[0] === recvCode) {
+          // New format: receivable stored in original currency — use directly, no conversion
+          balanceByCurrency[recvCode] = (balanceByCurrency[recvCode] || 0) + r.pendingBalance
+        } else {
+          // Old format or mixed: derive from sale lines using ratio
+          const lineTotalsByCurrency: Record<string, number> = {}
+          for (const line of lines) {
+            const code = line.currencyCode || (line as any).product?.currency?.code || ''
+            if (!code) continue
+            lineTotalsByCurrency[code] = (lineTotalsByCurrency[code] || 0) + (line.lineTotal || 0)
+          }
+          const ratio = r.amount > 0 ? Math.min(r.pendingBalance / r.amount, 1) : 1
+          for (const [code, lineTotal] of Object.entries(lineTotalsByCurrency)) {
+            balanceByCurrency[code] = (balanceByCurrency[code] || 0) + Math.round(lineTotal * ratio * 100) / 100
+          }
         }
       }
 
@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
       }
       return {
         ...client,
-        pendingBalance: Math.round(totalPendingBalance * 100) / 100,
+        pendingBalance: Math.round(totalPendingInRef * 100) / 100,
         balanceByCurrency,
       }
     })

@@ -18,6 +18,7 @@ export async function DELETE(
     // Fetch the payment record
     const payment = await db.clientPayment.findUnique({
       where: { id: paymentId },
+      include: { currency: { select: { code: true } } },
     })
 
     if (!payment) {
@@ -64,22 +65,48 @@ export async function DELETE(
         }
       } else {
         // ── Best-effort reverse: no details stored (migrated record) ──
+        // Get settings for currency conversion
+        const settings = await tx.settings.findFirst()
+        const exRate = settings?.exchangeRate || 0
+        // Look up currency codes from IDs
+        const [refCur, localCur] = await Promise.all([
+          settings?.referenceCurrencyId ? tx.currency.findUnique({ where: { id: settings.referenceCurrencyId }, select: { code: true } }) : null,
+          settings?.baseCurrencyId ? tx.currency.findUnique({ where: { id: settings.baseCurrencyId }, select: { code: true } }) : null,
+        ])
+        const refCode = refCur?.code || 'USD'
+        const localCode = localCur?.code || 'VES'
+        const payCode = payment.currency?.code || refCode
+
+        const convert = (amt: number, fromCode: string, toCode: string): number => {
+          if (fromCode === toCode || exRate <= 0) return amt
+          if (fromCode === refCode && toCode === localCode) return amt * exRate
+          if (fromCode === localCode && toCode === refCode) return amt / exRate
+          return amt
+        }
+
         // Restore the payment amount across the client's receivables (FIFO reverse)
         const receivables = await tx.accountReceivable.findMany({
           where: { clientId, status: { in: ['parcial', 'pagada'] } },
+          include: { currency: { select: { code: true } } },
           orderBy: { id: 'desc' }, // Reverse order (last paid → first to reverse)
         })
 
-        let remaining = payment.amount
+        let remaining = payment.amount // in payment's currency
         for (const recv of receivables) {
           if (remaining <= 0) break
 
-          // How much was paid on this receivable? (original - pending)
+          const recvCode = recv.currency?.code || refCode
+
+          // How much was paid on this receivable in receivable's currency
           const paidOnThis = Math.round((recv.amount - recv.pendingBalance) * 100) / 100
           if (paidOnThis <= 0) continue
 
-          // The amount we can reverse is min(remaining, what was paid)
-          const toRestore = Math.min(remaining, paidOnThis)
+          // Convert paidOnThis to payment's currency to compare
+          const paidInPayCurrency = Math.round(convert(paidOnThis, recvCode, payCode) * 100) / 100
+          const toRestoreInPayCurrency = Math.min(remaining, paidInPayCurrency)
+          // Convert back to receivable's currency
+          const toRestore = Math.round(convert(toRestoreInPayCurrency, payCode, recvCode) * 100) / 100
+
           const restoredBalance = Math.round((recv.pendingBalance + toRestore) * 100) / 100
           const newStatus = restoredBalance >= recv.amount ? 'pendiente' : 'parcial'
 
@@ -91,7 +118,7 @@ export async function DELETE(
             },
           })
 
-          remaining = Math.round((remaining - toRestore) * 100) / 100
+          remaining = Math.round((remaining - toRestoreInPayCurrency) * 100) / 100
         }
       }
 

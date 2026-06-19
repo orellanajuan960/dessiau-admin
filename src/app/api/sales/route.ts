@@ -264,20 +264,39 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Handle credit sale - create account receivable
+      // Handle credit sale - create account receivable in the sale's original currency
       const creditPayments = payments.filter((p: { method: string }) => creditCodes.has(p.method))
       for (const cp of creditPayments) {
         if (clientId) {
-          // Round to 2 decimals so amount and pendingBalance always match exactly
-          const roundedAmount = Math.round(cp.amount * 100) / 100
+          // Determine currency from sale lines — if all products share one currency, use it
+          const lineCurrencies = saleLinesData.map(l => l.currencyCode).filter(Boolean)
+          const uniqueCurrencies = [...new Set(lineCurrencies)]
+
+          let creditAmount: number
+          let creditCurrencyId: string
+
+          if (uniqueCurrencies.length === 1) {
+            // Single-currency sale: store receivable in that currency (no Bs→USD→Bs)
+            const code = uniqueCurrencies[0]
+            const cur = await tx.currency.findFirst({ where: { code } })
+            creditCurrencyId = cur?.id || refCurrency?.id || ''
+            creditAmount = Math.round(
+              saleLinesData.reduce((s, l) => s + (l.currencyCode === code ? l.lineTotal : 0), 0) * 100
+            ) / 100
+          } else {
+            // Mixed-currency sale: use reference currency
+            creditCurrencyId = cp.currencyId || refCurrency?.id || ''
+            creditAmount = Math.round(cp.amount * 100) / 100
+          }
+
           await tx.accountReceivable.create({
             data: {
               clientId,
               saleId: newSale.id,
-              amount: roundedAmount,
-              pendingBalance: roundedAmount,
+              amount: creditAmount,
+              pendingBalance: creditAmount,
               status: 'pendiente',
-              currencyId: cp.currencyId || refCurrency?.id || '',
+              currencyId: creditCurrencyId,
               dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
             },
           })
