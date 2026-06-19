@@ -1334,14 +1334,14 @@ export function ClientsTable() {
                 </p>
               )}
               <p className="text-xs text-muted-foreground">
-                Saldo después del cobro: {(() => {
-                  const fullDebt = parseFloat(computePaymentAmount(paymentClient!, isLocalMethod))
+                Saldo después del cobro: {paymentClient ? (() => {
+                  const fullDebt = parseFloat(computePaymentAmount(paymentClient, isLocalMethod))
                   const paid = parseFloat(paymentAmount) || 0
                   const remaining = Math.max(0, Math.round((fullDebt - paid) * 100) / 100)
                   return isLocalMethod
                     ? fmtWith(remaining, baseCode || undefined)
                     : fmtWith(remaining, referenceCurrency || undefined)
-                })()}
+                })() : 'Bs.0,00'}
               </p>
             </div>
             {selectedPm?.needsReference && (
