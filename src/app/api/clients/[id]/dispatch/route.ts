@@ -34,7 +34,7 @@ export async function POST(
 
     const result = await db.$transaction(async (tx) => {
       let totalAmount = 0
-      const saleLinesData: Array<{ productId: string; quantity: number; unitPrice: number; unitCost: number; lineTotal: number; lineProfit: number; currencyCode: string; currencyId: string }> = []
+      const saleLinesData: Array<{ productId: string; quantity: number; unitPrice: number; unitCost: number; lineTotal: number; lineProfit: number; currencyCode: string }> = []
       // Track totals by currency for separate receivables
       const totalsByCurrency: Record<string, number> = {}
 
@@ -75,7 +75,6 @@ export async function POST(
           lineTotal,
           lineProfit: Math.round((unitPrice - product.costAvg) * line.quantity * 100) / 100,
           currencyCode: curCode,
-          currencyId: curId,
         })
 
         // Accumulate by currency
