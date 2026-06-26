@@ -26,14 +26,22 @@ export async function POST(
 
     const branchId = bodyBranchId || await resolveBranchId()
 
+    // Get base currency from settings
+    const settings = await db.settings.findFirst()
+    const baseCurrency = settings?.baseCurrencyId
+      ? await db.currency.findUnique({ where: { id: settings.baseCurrencyId } })
+      : null
+
     const result = await db.$transaction(async (tx) => {
       let totalAmount = 0
-      const saleLinesData: Array<{ productId: string; quantity: number; unitPrice: number; unitCost: number; lineTotal: number; lineProfit: number; currencyCode: string }> = []
+      const saleLinesData: Array<{ productId: string; quantity: number; unitPrice: number; unitCost: number; lineTotal: number; lineProfit: number; currencyCode: string; currencyId: string }> = []
+      // Track totals by currency for separate receivables
+      const totalsByCurrency: Record<string, number> = {}
 
       for (const line of lines) {
         const product = await tx.product.findUnique({
           where: { id: line.productId },
-          include: { inventories: { where: { branchId } }, currency: { select: { code: true } } },
+          include: { inventories: { where: { branchId } }, currency: { select: { id: true, code: true } } },
         })
 
         if (!product) {
@@ -43,6 +51,8 @@ export async function POST(
         const inventory = product.inventories[0]
         const unitPrice = line.unitPrice || product.price
         const lineTotal = Math.round(unitPrice * line.quantity * 100) / 100
+        const curCode = product.currency?.code || ''
+        const curId = product.currency?.id || baseCurrency?.id || ''
 
         if (inventory && line.quantity > inventory.stock) {
           throw new Error(`Stock insuficiente para "${product.name}". Disponible: ${inventory.stock}, Solicitado: ${line.quantity}`)
@@ -64,13 +74,19 @@ export async function POST(
           unitCost: product.costAvg,
           lineTotal,
           lineProfit: Math.round((unitPrice - product.costAvg) * line.quantity * 100) / 100,
-          currencyCode: product.currency?.code || '',
+          currencyCode: curCode,
+          currencyId: curId,
         })
+
+        // Accumulate by currency
+        if (curId) {
+          totalsByCurrency[curId] = (totalsByCurrency[curId] || 0) + lineTotal
+        }
       }
 
       totalAmount = Math.round(totalAmount * 100) / 100
 
-      // Create the sale
+      // Create the sale with currencyId
       const sale = await tx.sale.create({
         data: {
           clientId,
@@ -78,6 +94,7 @@ export async function POST(
           branchId,
           total: totalAmount,
           status: 'completada',
+          currencyId: baseCurrency?.id || '',
           lines: {
             create: saleLinesData,
           },
@@ -87,31 +104,24 @@ export async function POST(
         },
       })
 
-      // Create AccountReceivable (credit - 30 day due)
+      // Create separate AccountReceivables per currency
       const dueDate = new Date()
       dueDate.setDate(dueDate.getDate() + 30)
 
-      // Determine the primary currency for the receivable (from first product)
-      let receivableCurrencyId = ''
-      if (saleLinesData.length > 0) {
-        const firstProduct = await tx.product.findUnique({
-          where: { id: saleLinesData[0].productId },
-          select: { currencyId: true },
+      for (const [curId, lineTotal] of Object.entries(totalsByCurrency)) {
+        const rounded = Math.round(lineTotal * 100) / 100
+        await tx.accountReceivable.create({
+          data: {
+            clientId,
+            saleId: sale.id,
+            amount: rounded,
+            pendingBalance: rounded,
+            dueDate,
+            status: 'pendiente',
+            currencyId: curId,
+          },
         })
-        receivableCurrencyId = firstProduct?.currencyId || ''
       }
-
-      await tx.accountReceivable.create({
-        data: {
-          clientId,
-          saleId: sale.id,
-          amount: totalAmount,
-          pendingBalance: totalAmount,
-          dueDate,
-          status: 'pendiente',
-          currencyId: receivableCurrencyId,
-        },
-      })
 
       return sale
     })
