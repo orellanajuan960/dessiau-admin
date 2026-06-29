@@ -40,9 +40,19 @@ export async function POST(
 ) {
   try {
     const { id } = await params
+    const body = await request.json()
+    const { clientId } = body
+
     const sale = await db.sale.findUnique({
       where: { id },
-      include: { lines: true, payments: true },
+      select: {
+        id: true,
+        branchId: true,
+        clientId: true,
+        status: true,
+        lines: { select: { productId: true, quantity: true } },
+        receivables: { select: { id: true } },
+      },
     })
 
     if (!sale) {
@@ -51,6 +61,33 @@ export async function POST(
 
     if (sale.status === 'anulada') {
       return NextResponse.json({ error: 'La venta ya fue anulada' }, { status: 400 })
+    }
+
+    // Check if there are client payments linked to this sale's receivables
+    // appliedDetails is a JSON string, so we check with raw query
+    if (sale.receivables.length > 0) {
+      const recvIds = sale.receivables.map(r => r.id)
+      // Build OR conditions for each receivableId in the JSON string
+      const conditions = recvIds.map((_, i) => `"appliedDetails"::text ILIKE '%\"receivableId\":\"%'`).join(' OR ')
+      // Simpler: check if any payment references these receivable IDs
+      const payments = await db.clientPayment.findMany({
+        where: { clientId: sale.clientId },
+        select: { id: true, appliedDetails: true },
+      })
+      const hasPayments = payments.some(p => {
+        try {
+          const details: Array<{ receivableId: string }> = JSON.parse(p.appliedDetails)
+          return details.some(d => recvIds.includes(d.receivableId))
+        } catch {
+          return false
+        }
+      })
+      if (hasPayments) {
+        return NextResponse.json(
+          { error: 'No se puede eliminar este crédito porque ya tiene cobros asociados. Elimine los cobros primero.' },
+          { status: 400 }
+        )
+      }
     }
 
     const updatedSale = await db.$transaction(async (tx) => {
@@ -69,6 +106,14 @@ export async function POST(
         }
       }
 
+      // Delete account receivables linked to this sale
+      if (sale.receivables.length > 0) {
+        await tx.accountReceivable.deleteMany({
+          where: { saleId: id },
+        })
+      }
+
+      // Mark sale as annulled
       return tx.sale.update({
         where: { id },
         data: { status: 'anulada' },
