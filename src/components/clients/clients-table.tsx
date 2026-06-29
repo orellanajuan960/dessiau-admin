@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { api } from '@/lib/api'
+import { api, fetcher } from '@/lib/api'
 import { useAuth } from '@/hooks/use-auth'
 import { useAppStore } from '@/stores/use-app-store'
 import {
@@ -142,10 +142,8 @@ export function ClientsTable() {
   const [loadingPayments, setLoadingPayments] = useState(false)
   const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null)
   const [deletePaymentTarget, setDeletePaymentTarget] = useState<ClientPaymentRecord | null>(null)
-
-  // Delete credit sale
-  const [deletingSaleId, setDeletingSaleId] = useState<string | null>(null)
   const [deleteSaleTarget, setDeleteSaleTarget] = useState<SaleRecord | null>(null)
+  const [deletingSaleId, setDeletingSaleId] = useState<string | null>(null)
 
   // Statement email
   const [sendingStatement, setSendingStatement] = useState<string | null>(null)
@@ -171,7 +169,7 @@ export function ClientsTable() {
   const fmtDebt = (client: Client): string => {
     const byCurrency = client.balanceByCurrency || {}
     const entries = Object.entries(byCurrency).filter(([, amt]) => amt > 0)
-    if (entries.length === 0) return 'Bs.0,00'
+    if (entries.length === 0) return fmtWith(client.pendingBalance, baseCode || undefined)
     return entries.map(([code, amt]) => fmtWith(amt, code || baseCode || undefined)).join(' + ')
   }
 
@@ -254,33 +252,22 @@ export function ClientsTable() {
     }
   }
 
-  // Delete a credit sale (annul it)
-  const handleDeleteCreditSale = async (sale: SaleRecord) => {
-    if (!historyClient) return
-    setDeletingSaleId(sale.id)
+  // Delete a credit sale
+  const handleDeleteSale = async () => {
+    if (!deleteSaleTarget) return
+    setDeletingSaleId(deleteSaleTarget.id)
     try {
-      const res = await fetch(`/api/sales/${sale.id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientId: historyClient.id })
+      await fetcher(`/api/sales/${deleteSaleTarget.id}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ userId: user?.id }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Error al anular venta')
-      toast.success('Credito eliminado. Stock restaurado.')
-      // Refresh history, payments and clients
-      const sData = await api.get<{ sales: SaleRecord[] }>(`/api/clients/${historyClient.id}/sales`)
-      setSales(sData.sales)
-      const pData = await api.get<{ payments: ClientPaymentRecord[] }>(`/api/clients/${historyClient.id}/payments`)
-      setClientPayments(pData.payments)
-      fetchClients()
+      setSales(prev => prev.filter(s => s.id !== deleteSaleTarget.id))
+      toast.success('Venta de credito eliminada')
       setDeleteSaleTarget(null)
-      // Close dialog if no more sales
-      if (sData.sales.length === 0) {
-        setShowHistoryDialog(false)
-        setHistoryClient(null)
-      }
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Error al anular venta'
+      // Refresh clients to update balances
+      fetchClients()
+    } catch (error: any) {
+      const msg = error?.response?.data?.error || 'Error al eliminar venta'
       toast.error(msg)
     } finally {
       setDeletingSaleId(null)
@@ -518,43 +505,14 @@ export function ClientsTable() {
     }
   }
 
-  // Compute correct payment amount from balanceByCurrency (avoids using wrong pendingBalance)
-  const computePaymentAmount = (client: Client, toLocal: boolean): string => {
-    const byCurrency = client.balanceByCurrency || {}
-    const entries = Object.entries(byCurrency).filter(([, amt]) => amt > 0)
-    if (entries.length === 0) {
-      return '0.00'
-    }
-    let total = 0
-    for (const [code, amt] of entries) {
-      if (toLocal) {
-        // Convert everything to local currency
-        if (code === baseCode || !code) {
-          total += amt
-        } else {
-          total += amt * exchangeRate
-        }
-      } else {
-        // Convert everything to reference currency
-        if (code === baseCode || !code) {
-          total += exchangeRate > 0 ? amt / exchangeRate : amt
-        } else {
-          total += amt
-        }
-      }
-    }
-    return (Math.round(total * 100) / 100).toFixed(2)
-  }
-
   const openPayment = (client: Client) => {
     setPaymentClient(client)
     // Set default to first available non-credit method
     const firstNonCredit = paymentMethods.find(m => !m.isCredit)
-    const methodCode = firstNonCredit?.code || paymentMethods[0]?.code || ''
-    setPaymentMethod(methodCode)
+    setPaymentMethod(firstNonCredit?.code || paymentMethods[0]?.code || '')
     setPaymentReference('')
-    const isLocal = firstNonCredit?.isLocalCurrency ?? false
-    setPaymentAmount(computePaymentAmount(client, isLocal))
+    // Set amount in reference currency by default
+    setPaymentAmount(client.pendingBalance.toFixed(2))
     setShowPaymentDialog(true)
   }
 
@@ -565,15 +523,21 @@ export function ClientsTable() {
     if (paymentClient) {
       const pm = paymentMethods.find(m => m.code === methodCode)
       const isLocal = pm?.isLocalCurrency ?? false
-      setPaymentAmount(computePaymentAmount(paymentClient, isLocal))
+      if (isLocal && exchangeRate > 0) {
+        setPaymentAmount((paymentClient.pendingBalance * exchangeRate).toFixed(2))
+      } else {
+        setPaymentAmount(paymentClient.pendingBalance.toFixed(2))
+      }
     }
   }
 
-  // Compute total debt in display currency for validation
-  const totalDebtInDisplay = (() => {
-    if (!paymentClient) return 0
-    const debt = parseFloat(computePaymentAmount(paymentClient, isLocalMethod))
-    return debt
+  // Convert displayed amount to reference currency
+  const paymentAmountInRef = (() => {
+    const parsed = parseFloat(paymentAmount) || 0
+    if (isLocalMethod && exchangeRate > 0) {
+      return Math.round((parsed / exchangeRate) * 100) / 100
+    }
+    return parsed
   })()
 
   const openDispatch = async (client: Client) => {
@@ -607,9 +571,8 @@ export function ClientsTable() {
       toast.error('El monto debe ser mayor a 0')
       return
     }
-    // Validate against total debt in display currency (with tolerance for rounding)
-    if (amt > totalDebtInDisplay + 1.00) {
-      toast.error(`El monto no puede ser mayor al saldo pendiente`)
+    if (paymentAmountInRef > paymentClient.pendingBalance) {
+      toast.error(`El monto no puede ser mayor al saldo pendiente (${fmtDebt(paymentClient)})`)
       return
     }
     if (selectedPm?.isCash && !openCashRegId) {
@@ -622,7 +585,7 @@ export function ClientsTable() {
       const displayAmount = parseFloat(paymentAmount) || 0
       const displayCurrencyCode = isLocalMethod ? (baseCode || 'VES') : (referenceCurrency || 'USD')
       await api.post(`/api/clients/${paymentClient.id}/payment`, {
-        amount: displayAmount,
+        amount: paymentAmountInRef,
         displayAmount,
         displayCurrencyCode,
         method: paymentMethod,
@@ -631,7 +594,7 @@ export function ClientsTable() {
         userId: user.id,
         currencyId: baseCurrencyId,
       })
-      const displayLabel = isLocalMethod ? `Bs. ${displayAmount.toFixed(2)}` : `${fmt(displayAmount)}`
+      const displayLabel = isLocalMethod ? `Bs. ${parseFloat(paymentAmount).toFixed(2)}` : `${fmt(paymentAmountInRef)}`
       toast.success(`Cobro de ${displayLabel} registrado exitosamente`)
       setShowPaymentDialog(false)
       fetchClients()
@@ -777,7 +740,7 @@ export function ClientsTable() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((client) => (
             <Card key={client.id} className={`relative overflow-hidden hover:shadow-md transition-shadow ${client.deletedAt ? 'opacity-60' : ''}`}>
-              <div className={`h-1 ${Object.values(client.balanceByCurrency || {}).some(v => v > 0) ? 'bg-red-500' : 'bg-green-500'}`} />
+              <div className={`h-1 ${client.pendingBalance > 0 ? 'bg-red-500' : 'bg-green-500'}`} />
               <CardContent className="p-4 space-y-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
@@ -789,11 +752,11 @@ export function ClientsTable() {
                         Deshabilitado
                       </Badge>
                     )}
-                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${Object.values(client.balanceByCurrency || {}).some(v => v > 0)
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${client.pendingBalance > 0
                       ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400'
                       : 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400'
                     }`}>
-                      {Object.values(client.balanceByCurrency || {}).some(v => v > 0)
+                      {client.pendingBalance > 0
                         ? fmtDebt(client)
                         : 'Sin deuda'
                       }
@@ -827,7 +790,7 @@ export function ClientsTable() {
                     <ShoppingCart className="h-3 w-3" />
                     <span>{client._count.sales} venta{client._count.sales !== 1 ? 's' : ''}</span>
                   </div>
-                  {Object.values(client.balanceByCurrency || {}).some(v => v > 0) && (
+                  {client.pendingBalance > 0 && (
                     <div className="text-red-600 font-medium">
                       Debe: {fmtDebt(client)}
                     </div>
@@ -856,7 +819,7 @@ export function ClientsTable() {
                           <Truck className="h-3.5 w-3.5" />
                         </Button>
                       )}
-                      {Object.values(client.balanceByCurrency || {}).some(v => v > 0) && (
+                      {client.pendingBalance > 0 && (
                         <Button size="sm" variant="outline" className="h-7 text-xs text-primary hover:text-primary" onClick={() => openPayment(client)}>
                           <DollarSign className="mr-1 h-3 w-3" /> Cobrar
                         </Button>
@@ -1094,7 +1057,7 @@ export function ClientsTable() {
                             <TableHead className="text-right">Total</TableHead>
                             <TableHead className="hidden lg:table-cell">Método</TableHead>
                             <TableHead>Estado</TableHead>
-                            <TableHead className="w-10"></TableHead>
+                            <TableHead className="w-20"></TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -1167,12 +1130,12 @@ export function ClientsTable() {
                                     >
                                       <Printer className="h-3.5 w-3.5" />
                                     </Button>
-                                    {canManage && isCredit && (
+                                    {isCredit && (
                                       <Button
                                         size="sm"
                                         variant="ghost"
                                         className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
-                                        title="Eliminar credito"
+                                        title="Eliminar venta de credito"
                                         disabled={deletingSaleId === sale.id}
                                         onClick={() => setDeleteSaleTarget(sale)}
                                       >
@@ -1379,18 +1342,16 @@ export function ClientsTable() {
               />
               {isLocalMethod && exchangeRate > 0 && (
                 <p className="text-xs text-muted-foreground">
-                  Equivale a {fmt(exchangeRate > 0 ? Math.round(((parseFloat(paymentAmount) || 0) / exchangeRate) * 100) / 100 : 0)} (Tasa: {exchangeRate.toFixed(2)} {baseSym}/{referenceCurrency})
+                  Equivale a {fmt(paymentAmountInRef)} (Tasa: {exchangeRate.toFixed(2)} {baseSym}/{referenceCurrency})
                 </p>
               )}
               <p className="text-xs text-muted-foreground">
-                Saldo después del cobro: {paymentClient ? (() => {
-                  const fullDebt = parseFloat(computePaymentAmount(paymentClient, isLocalMethod))
-                  const paid = parseFloat(paymentAmount) || 0
-                  const remaining = Math.max(0, Math.round((fullDebt - paid) * 100) / 100)
-                  return isLocalMethod
-                    ? fmtWith(remaining, baseCode || undefined)
+                Saldo después del cobro: {(() => {
+                  const remaining = Math.max(0, (paymentClient?.pendingBalance || 0) - paymentAmountInRef)
+                  return isLocalMethod && exchangeRate > 0
+                    ? fmtWith(remaining * exchangeRate, baseCode || undefined)
                     : fmtWith(remaining, referenceCurrency || undefined)
-                })() : 'Bs.0,00'}
+                })()}
               </p>
             </div>
             {selectedPm?.needsReference && (
@@ -1464,24 +1425,15 @@ export function ClientsTable() {
       <AlertDialog open={!!deleteSaleTarget} onOpenChange={(open) => { if (!open) setDeleteSaleTarget(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Eliminar credito {deleteSaleTarget ? fmtSaleTotal(deleteSaleTarget) : ''}?</AlertDialogTitle>
+            <AlertDialogTitle>Eliminar Venta de Credito</AlertDialogTitle>
             <AlertDialogDescription>
-              Se restaurara el stock de los productos y se eliminara la deuda. Esta accion no se puede deshacer.
-              {deleteSaleTarget && deleteSaleTarget.receivables.some(r => r.pendingBalance > 0) && (
-                <span className="block mt-2 text-red-600 dark:text-red-400 font-semibold">
-                  Esta venta tiene pagos asociados y no se puede eliminar.
-                </span>
-              )}
+              Se eliminara la venta de credito por {deleteSaleTarget ? fmtSaleTotal(deleteSaleTarget) : ''} a favor de {deleteSaleTarget?.client?.name || historyClient?.name || 'el cliente'}. El stock se restaurara automaticamente y la cuenta por cobrar sera eliminada. Esta accion no se puede deshacer.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={!!deletingSaleId}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onClick={() => { if (deleteSaleTarget) handleDeleteCreditSale(deleteSaleTarget) }}
-              disabled={!!deletingSaleId || (deleteSaleTarget ? deleteSaleTarget.receivables.some(r => r.pendingBalance > 0) : false)}
-            >
-              {deletingSaleId ? 'Eliminando...' : 'Eliminar Credito'}
+            <AlertDialogAction variant="destructive" onClick={handleDeleteSale} disabled={!!deletingSaleId}>
+              {deletingSaleId ? 'Eliminando...' : 'Eliminar Venta'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
