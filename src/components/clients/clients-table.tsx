@@ -143,6 +143,10 @@ export function ClientsTable() {
   const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null)
   const [deletePaymentTarget, setDeletePaymentTarget] = useState<ClientPaymentRecord | null>(null)
 
+  // Delete credit sale
+  const [deletingSaleId, setDeletingSaleId] = useState<string | null>(null)
+  const [deleteSaleTarget, setDeleteSaleTarget] = useState<SaleRecord | null>(null)
+
   // Statement email
   const [sendingStatement, setSendingStatement] = useState<string | null>(null)
 
@@ -247,6 +251,39 @@ export function ClientsTable() {
     } finally {
       setDeletingPaymentId(null)
       setDeletePaymentTarget(null)
+    }
+  }
+
+  // Delete a credit sale (annul it)
+  const handleDeleteCreditSale = async (sale: SaleRecord) => {
+    if (!historyClient) return
+    setDeletingSaleId(sale.id)
+    try {
+      const res = await fetch(`/api/sales/${sale.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId: historyClient.id })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Error al anular venta')
+      toast.success('Credito eliminado. Stock restaurado.')
+      // Refresh history, payments and clients
+      const sData = await api.get<{ sales: SaleRecord[] }>(`/api/clients/${historyClient.id}/sales`)
+      setSales(sData.sales)
+      const pData = await api.get<{ payments: ClientPaymentRecord[] }>(`/api/clients/${historyClient.id}/payments`)
+      setClientPayments(pData.payments)
+      fetchClients()
+      setDeleteSaleTarget(null)
+      // Close dialog if no more sales
+      if (sData.sales.length === 0) {
+        setShowHistoryDialog(false)
+        setHistoryClient(null)
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Error al anular venta'
+      toast.error(msg)
+    } finally {
+      setDeletingSaleId(null)
     }
   }
 
@@ -1106,29 +1143,46 @@ export function ClientsTable() {
                                   )}
                                 </TableCell>
                                 <TableCell>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="h-7 w-7 p-0"
-                                    title="Imprimir Factura"
-                                    onClick={async () => {
-                                      try {
-                                        const res = await fetch(`/api/sales/${sale.id}/invoice`)
-                                        if (!res.ok) throw new Error()
-                                        const blob = await res.blob()
-                                        const url = URL.createObjectURL(blob)
-                                        const a = document.createElement('a')
-                                        a.href = url
-                                        a.download = `factura_${sale.id.slice(0, 8)}.pdf`
-                                        a.click()
-                                        URL.revokeObjectURL(url)
-                                      } catch {
-                                        toast.error('Error al generar factura')
-                                      }
-                                    }}
-                                  >
-                                    <Printer className="h-3.5 w-3.5" />
-                                  </Button>
+                                  <div className="flex items-center gap-0.5">
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-7 w-7 p-0"
+                                      title="Imprimir Factura"
+                                      onClick={async () => {
+                                        try {
+                                          const res = await fetch(`/api/sales/${sale.id}/invoice`)
+                                          if (!res.ok) throw new Error()
+                                          const blob = await res.blob()
+                                          const url = URL.createObjectURL(blob)
+                                          const a = document.createElement('a')
+                                          a.href = url
+                                          a.download = `factura_${sale.id.slice(0, 8)}.pdf`
+                                          a.click()
+                                          URL.revokeObjectURL(url)
+                                        } catch {
+                                          toast.error('Error al generar factura')
+                                        }
+                                      }}
+                                    >
+                                      <Printer className="h-3.5 w-3.5" />
+                                    </Button>
+                                    {canManage && isCredit && (
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                        title="Eliminar credito"
+                                        disabled={deletingSaleId === sale.id}
+                                        onClick={() => setDeleteSaleTarget(sale)}
+                                      >
+                                        {deletingSaleId === sale.id
+                                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                          : <Trash2 className="h-3.5 w-3.5" />
+                                        }
+                                      </Button>
+                                    )}
+                                  </div>
                                 </TableCell>
                               </TableRow>
                             )
@@ -1401,6 +1455,33 @@ export function ClientsTable() {
             <AlertDialogCancel disabled={!!deletingPaymentId}>Cancelar</AlertDialogCancel>
             <AlertDialogAction variant="destructive" onClick={handleDeletePayment} disabled={!!deletingPaymentId}>
               {deletingPaymentId ? 'Eliminando...' : 'Eliminar Cobro'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Credit Sale Confirmation Dialog */}
+      <AlertDialog open={!!deleteSaleTarget} onOpenChange={(open) => { if (!open) setDeleteSaleTarget(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar credito {deleteSaleTarget ? fmtSaleTotal(deleteSaleTarget) : ''}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se restaurara el stock de los productos y se eliminara la deuda. Esta accion no se puede deshacer.
+              {deleteSaleTarget && deleteSaleTarget.receivables.some(r => r.pendingBalance > 0) && (
+                <span className="block mt-2 text-red-600 dark:text-red-400 font-semibold">
+                  Esta venta tiene pagos asociados y no se puede eliminar.
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={!!deletingSaleId}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => { if (deleteSaleTarget) handleDeleteCreditSale(deleteSaleTarget) }}
+              disabled={!!deletingSaleId || (deleteSaleTarget ? deleteSaleTarget.receivables.some(r => r.pendingBalance > 0) : false)}
+            >
+              {deletingSaleId ? 'Eliminando...' : 'Eliminar Credito'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
