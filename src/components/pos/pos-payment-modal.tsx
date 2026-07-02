@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { usePosStore } from '@/stores/use-pos-store'
 import { useAuth } from '@/hooks/use-auth'
 import { useSetting } from '@/stores/use-app-store'
@@ -36,6 +36,8 @@ import {
   AlertTriangle,
   UserPlus,
   User,
+  Plus,
+  Trash2,
   type LucideIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -65,6 +67,13 @@ interface ClientOption {
   name: string
   phone: string | null
   email: string | null
+}
+
+interface PaymentEntry {
+  tempId: string
+  method: string
+  amount: string
+  reference: string
 }
 
 // Icon resolver
@@ -99,6 +108,10 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   const [openCashRegId, setOpenCashRegId] = useState<string | null>(() => getCachedOpenRegId())
   const [dbMethods, setDbMethods] = useState<PaymentMethodItem[]>(() => getCachedMethods() || [])
 
+  // Hybrid payment state
+  const [paymentEntries, setPaymentEntries] = useState<PaymentEntry[]>([])
+  const isHybrid = method === 'hibrido'
+
   // Client selection
   const [clients, setClients] = useState<ClientOption[]>([])
   const [clientSearch, setClientSearch] = useState('')
@@ -129,17 +142,23 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   const subtotal = subtotalRef
   const ivaAmountLocal = ivaEnabled ? Math.round(subtotalLocal * (ivaRate / 100) * 100) / 100 : 0
   const totalLocal = Math.round((subtotalLocal + ivaAmountLocal) * 100) / 100
-  // Total in reference currency = (subtotal local + iva local) / exchangeRate — full precision
+  // Total in reference currency = (subtotal local + iva local) / exchangeRate
   const total = exchangeRate > 0 ? (totalLocal / exchangeRate) : subtotal
   const { sym: currencySymbol, baseSym, refCode, fmt, fmtBase, multiEnabled } = useCurrency()
 
-  // Only enabled methods
+  // Keep refs of total values so the useEffect can read them without adding them as dependencies
+  const totalRef = useRef(total)
+  const totalLocalRef = useRef(totalLocal)
+  useEffect(() => { totalRef.current = total }, [total])
+  useEffect(() => { totalLocalRef.current = totalLocal }, [totalLocal])
+
+  // Only enabled methods (excluding virtual 'hibrido')
   const paymentMethods = useMemo(() => dbMethods.filter(m => m.enabled), [dbMethods])
 
   const selectedMethod = paymentMethods.find(pm => pm.code === method)
 
   // Determine if current method uses local currency (needed before resolvedCurrencyId)
-  const isLocalMethod = multiEnabled ? (selectedMethod?.isLocalCurrency ?? false) : false
+  const isLocalMethod = !isHybrid ? (multiEnabled ? (selectedMethod?.isLocalCurrency ?? false) : false) : false
 
   // Resolve currencyId based on payment method type
   const baseId = baseCurrencyId || currencies.find(c => c.isBase)?.id || ''
@@ -161,18 +180,32 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
     )
   }, [clients, clientSearch])
 
-  // When method changes, set default amount in the correct currency
+  // When METHOD changes, set default amount in the correct currency.
+  // Does NOT depend on total/totalLocal to avoid resetting user edits.
+  const prevMethodRef = useRef(method)
   useEffect(() => {
-    if (isLocalMethod) {
-      setAmount(totalLocal.toFixed(2))
-    } else {
-      // Show full precision for reference currency (USD)
-      setAmount(formatRefPrecision(total))
+    if (method !== prevMethodRef.current) {
+      prevMethodRef.current = method
+      if (isHybrid) {
+        // Initialize first entry for hybrid mode
+        const firstNonCredit = paymentMethods.find(m => !m.isCredit)
+        const firstCode = firstNonCredit?.code || ''
+        const firstIsLocal = multiEnabled ? (firstNonCredit?.isLocalCurrency ?? false) : false
+        setPaymentEntries([{
+          tempId: crypto.randomUUID(),
+          method: firstCode,
+          amount: firstIsLocal ? totalLocalRef.current.toFixed(2) : formatRefPrecision(totalRef.current),
+          reference: '',
+        }])
+      } else if (isLocalMethod) {
+        setAmount(totalLocalRef.current.toFixed(2))
+      } else {
+        setAmount(formatRefPrecision(totalRef.current))
+      }
     }
-  }, [method, isLocalMethod, totalLocal, total])
+  }, [method, isLocalMethod, isHybrid, paymentMethods, multiEnabled])
 
   // Load clients on mount; methods, currencies & register come from localStorage cache
-  // (populated by settings-initializer on app startup and kept in sync on mutations)
   useEffect(() => {
     api.get<ClientOption[]>('/api/clients')
       .then((clients) => { if (Array.isArray(clients)) setClients(clients) })
@@ -219,44 +252,149 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
     }
   }
 
-  // Convert displayed amount to reference currency for submission
+  // ── Hybrid payment management ──
+  const getMethodCurrency = (methodCode: string) => {
+    const m = paymentMethods.find(pm => pm.code === methodCode)
+    return multiEnabled ? (m?.isLocalCurrency ?? false) : false
+  }
+
+  const convertEntryToRef = (entryAmount: number, isLocal: boolean): number => {
+    if (isLocal && exchangeRate > 0) return entryAmount / exchangeRate
+    return entryAmount
+  }
+
+  const convertRefToEntry = (refAmount: number, isLocal: boolean): string => {
+    if (isLocal && exchangeRate > 0) return (refAmount * exchangeRate).toFixed(2)
+    return formatRefPrecision(refAmount)
+  }
+
+  const hybridTotalInRef = useMemo(() => {
+    return paymentEntries.reduce((sum, e) => {
+      return sum + convertEntryToRef(parseFloat(e.amount) || 0, getMethodCurrency(e.method))
+    }, 0)
+  }, [paymentEntries, exchangeRate, paymentMethods, multiEnabled])
+
+  const hybridRemaining = total - hybridTotalInRef
+  const hybridRemainingLocal = exchangeRate > 0 ? hybridRemaining * exchangeRate : 0
+
+  const addPaymentEntry = () => {
+    // Find a method not yet used (prefer unused non-credit methods)
+    const usedMethods = new Set(paymentEntries.map(e => e.method))
+    const nextMethod = paymentMethods.find(m => !m.isCredit && !usedMethods.has(m.code))
+      || paymentMethods.find(m => !m.isCredit)
+      || paymentMethods[0]
+    if (!nextMethod) return
+
+    const nextIsLocal = multiEnabled ? (nextMethod.isLocalCurrency ?? false) : false
+    const remaining = Math.max(0, hybridRemaining)
+    setPaymentEntries(prev => [...prev, {
+      tempId: crypto.randomUUID(),
+      method: nextMethod.code,
+      amount: convertRefToEntry(remaining, nextIsLocal),
+      reference: '',
+    }])
+  }
+
+  const removePaymentEntry = (tempId: string) => {
+    setPaymentEntries(prev => prev.filter(e => e.tempId !== tempId))
+  }
+
+  const updatePaymentEntry = (tempId: string, field: 'method' | 'amount' | 'reference', value: string) => {
+    setPaymentEntries(prev => prev.map(e => {
+      if (e.tempId !== tempId) return e
+      if (field === 'method') return { ...e, method: value, reference: '' }
+      return { ...e, [field]: value }
+    }))
+  }
+
+  // Convert displayed amount to reference currency for submission (single method only)
   const amountInRefCurrency = useMemo(() => {
     const parsed = parseFloat(amount) || 0
     if (isLocalMethod) {
-      // Convert local (VES) to ref (USD) — full precision, no rounding
       return exchangeRate > 0 ? (parsed / exchangeRate) : parsed
     }
     return parsed
   }, [amount, isLocalMethod, exchangeRate])
 
   const handlePay = async () => {
-    if (parseFloat(amount) <= 0) {
-      toast.error('El monto debe ser mayor a cero')
-      return
-    }
-    if (!isLocalMethod && parseFloat(amount) > total && !selectedMethod?.isCash && !selectedMethod?.isCredit) {
-      toast.error('El monto excede el total')
-      return
-    }
-    if (!resolvedCurrencyId) {
-      toast.error('No se pudo determinar la moneda. Verifica la configuracion o crea una moneda en el sistema.')
-      return
-    }
-    if (selectedMethod?.needsReference && !reference.trim()) {
-      toast.error(`La referencia es obligatoria para ${selectedMethod.name}`)
-      return
-    }
-    if (selectedMethod?.isCredit && !clientId) {
-      toast.error('Debe seleccionar un cliente para ventas a credito')
-      return
-    }
+    // Build payments array from either hybrid entries or single method
+    let finalPayments: Array<{ method: string; amount: number; currencyId: string; reference?: string }> = []
 
-    setLoading(true)
-    try {
+    if (isHybrid) {
+      // Validate hybrid entries
+      if (paymentEntries.length === 0) {
+        toast.error('Agregue al menos un metodo de pago')
+        return
+      }
+      for (const entry of paymentEntries) {
+        if (!entry.method) {
+          toast.error('Seleccione un metodo para cada pago')
+          return
+        }
+        const amt = parseFloat(entry.amount) || 0
+        if (amt <= 0) {
+          toast.error('Cada pago debe tener un monto mayor a cero')
+          return
+        }
+        const eMethod = paymentMethods.find(m => m.code === entry.method)
+        if (eMethod?.needsReference && !entry.reference.trim()) {
+          toast.error(`La referencia es obligatoria para ${eMethod.name}`)
+          return
+        }
+        const eIsLocal = multiEnabled ? (eMethod?.isLocalCurrency ?? false) : false
+        const eCurrencyId = eIsLocal ? baseId : refId
+        finalPayments.push({
+          method: entry.method,
+          amount: amt,
+          currencyId: eCurrencyId,
+          reference: entry.reference.trim() || undefined,
+        })
+      }
+      // Check that payments cover the total
+      const totalPaymentsRef = finalPayments.reduce((sum, p) => {
+        return sum + convertEntryToRef(p.amount, getMethodCurrency(p.method))
+      }, 0)
+      if (totalPaymentsRef < total - 0.01) {
+        toast.error('Los pagos no cubren el total de la venta')
+        return
+      }
+    } else {
+      // Single method validation
+      if (parseFloat(amount) <= 0) {
+        toast.error('El monto debe ser mayor a cero')
+        return
+      }
+      if (!isLocalMethod && parseFloat(amount) > total && !selectedMethod?.isCash && !selectedMethod?.isCredit) {
+        toast.error('El monto excede el total')
+        return
+      }
+      if (!resolvedCurrencyId) {
+        toast.error('No se pudo determinar la moneda. Verifica la configuracion o crea una moneda en el sistema.')
+        return
+      }
+      if (selectedMethod?.needsReference && !reference.trim()) {
+        toast.error(`La referencia es obligatoria para ${selectedMethod.name}`)
+        return
+      }
+      if (selectedMethod?.isCredit && !clientId) {
+        toast.error('Debe seleccionar un cliente para ventas a credito')
+        return
+      }
+
       const paymentAmount = isLocalMethod
         ? parseFloat(amount) || 0
         : Math.min(parseFloat(amount) || 0, total)
 
+      finalPayments = [{
+        method,
+        amount: paymentAmount,
+        currencyId: resolvedCurrencyId,
+        reference: reference.trim() || undefined,
+      }]
+    }
+
+    setLoading(true)
+    try {
       await api.post('/api/sales', {
         clientId: clientId || null,
         cashRegId: openCashRegId,
@@ -269,14 +407,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
           unitPrice: item.unitPrice,
           unitCost: item.unitCost,
         })),
-        payments: [
-          {
-            method,
-            amount: paymentAmount,
-            currencyId: resolvedCurrencyId,
-            reference: reference.trim() || undefined,
-          },
-        ],
+        payments: finalPayments,
       })
       setSuccess(true)
       setTimeout(() => {
@@ -291,8 +422,9 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
     }
   }
 
-  // Calculate change in the displayed currency
+  // Calculate change in the displayed currency (single method only)
   const changeAmount = useMemo(() => {
+    if (isHybrid) return 0
     const parsed = parseFloat(amount) || 0
     if (selectedMethod?.isCash) {
       const limit = isLocalMethod ? totalLocal : total
@@ -301,7 +433,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
       }
     }
     return 0
-  }, [amount, method, isLocalMethod, totalLocal, total, selectedMethod])
+  }, [amount, method, isLocalMethod, totalLocal, total, selectedMethod, isHybrid])
 
   const amountLabel = isLocalMethod ? `Monto (${baseSym})` : 'Monto'
   const changeLabel = isLocalMethod ? baseSym : currencySymbol
@@ -359,6 +491,21 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
                   </label>
                 )
               })}
+
+              {/* Hybrid payment option */}
+              <label
+                className={`flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 p-3 transition-colors ${
+                  isHybrid
+                    ? 'border-primary bg-primary/5 dark:bg-primary/10'
+                    : 'border-muted hover:border-muted-foreground/30'
+                }`}
+              >
+                <RadioGroupItem value="hibrido" className="sr-only" />
+                <Plus className={`h-5 w-5 ${isHybrid ? 'text-primary' : 'text-muted-foreground'}`} />
+                <span className={`text-xs font-medium ${isHybrid ? 'text-primary dark:text-primary' : ''}`}>
+                  Híbrido
+                </span>
+              </label>
             </RadioGroup>
 
             {paymentMethods.length === 0 && (
@@ -499,39 +646,143 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
 
             <Separator />
 
-            {/* Amount */}
-            <div className="space-y-2">
-              <Label htmlFor="amount">{amountLabel}</Label>
-              <Input
-                id="amount"
-                type="number"
-                step="0.01"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-              />
-              {multiEnabled && isLocalMethod && (
-                <p className="text-xs text-muted-foreground">
-                  Equivale a {currencySymbol}{formatRefPrecision(amountInRefCurrency)} (Tasa: {exchangeRate.toFixed(2)} {baseSym}/{refCode})
-                </p>
-              )}
-              {changeAmount > 0 && (
-                <p className="text-sm text-primary font-medium">
-                  Cambio: {changeLabel}{isLocalMethod ? changeAmount.toFixed(2) : formatRefPrecision(changeAmount)}
-                </p>
-              )}
-            </div>
+            {/* ── Hybrid payment entries ── */}
+            {isHybrid ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">Pagos parciales</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={addPaymentEntry}
+                    disabled={paymentEntries.length >= 5}
+                  >
+                    <Plus className="h-3 w-3 mr-1" /> Agregar metodo
+                  </Button>
+                </div>
 
-            {/* Reference */}
-            {selectedMethod?.needsReference && (
-              <div className="space-y-2">
-                <Label htmlFor="reference">Referencia</Label>
-                <Input
-                  id="reference"
-                  placeholder='Número de referencia'
-                  value={reference}
-                  onChange={(e) => setReference(e.target.value)}
-                />
+                {/* Remaining balance */}
+                <div className={`rounded-md p-2.5 text-sm font-medium text-center ${
+                  hybridRemaining > 0.01
+                    ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400'
+                    : 'bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400'
+                }`}>
+                  Restante: {currencySymbol}{formatRefPrecision(Math.max(0, hybridRemaining))}
+                  {multiEnabled && <span className="ml-2">({baseSym}{Math.max(0, hybridRemainingLocal).toFixed(2)})</span>}
+                </div>
+
+                {/* Payment entry cards */}
+                {paymentEntries.map((entry, idx) => {
+                  const eMethod = paymentMethods.find(m => m.code === entry.method)
+                  const eIsLocal = multiEnabled ? (eMethod?.isLocalCurrency ?? false) : false
+                  return (
+                    <div key={entry.tempId} className="rounded-md border p-3 space-y-2 bg-muted/20">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                          Pago #{idx + 1}
+                        </span>
+                        {paymentEntries.length > 1 && (
+                          <button
+                            type="button"
+                            className="text-red-500 hover:text-red-700 transition-colors p-0.5"
+                            onClick={() => removePaymentEntry(entry.tempId)}
+                            title="Eliminar este pago"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Method selector */}
+                      <Select
+                        value={entry.method}
+                        onValueChange={(v) => updatePaymentEntry(entry.tempId, 'method', v)}
+                      >
+                        <SelectTrigger className="h-9 text-sm">
+                          <SelectValue placeholder="Metodo de pago" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {paymentMethods.filter(m => !m.isCredit).map(m => {
+                            const Icon = getIcon(m.icon)
+                            return (
+                              <SelectItem key={m.code} value={m.code}>
+                                <span className="flex items-center gap-2">
+                                  <Icon className="h-3.5 w-3.5" />
+                                  {m.name}
+                                </span>
+                              </SelectItem>
+                            )
+                          })}
+                        </SelectContent>
+                      </Select>
+
+                      {/* Amount */}
+                      <div className="relative">
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder={eIsLocal ? `Monto (${baseSym})` : 'Monto ($)'}
+                          value={entry.amount}
+                          onChange={(e) => updatePaymentEntry(entry.tempId, 'amount', e.target.value)}
+                          className="text-sm pr-12"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
+                          {eIsLocal ? baseSym : '$'}
+                        </span>
+                      </div>
+
+                      {/* Reference */}
+                      {eMethod?.needsReference && (
+                        <Input
+                          placeholder="Referencia"
+                          value={entry.reference}
+                          onChange={(e) => updatePaymentEntry(entry.tempId, 'reference', e.target.value)}
+                          className="text-sm"
+                        />
+                      )}
+                    </div>
+                  )
+                })}
               </div>
+            ) : (
+              <>
+                {/* ── Single method: Amount ── */}
+                <div className="space-y-2">
+                  <Label htmlFor="amount">{amountLabel}</Label>
+                  <Input
+                    id="amount"
+                    type="number"
+                    step="0.01"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                  />
+                  {multiEnabled && isLocalMethod && (
+                    <p className="text-xs text-muted-foreground">
+                      Equivale a {currencySymbol}{formatRefPrecision(amountInRefCurrency)} (Tasa: {exchangeRate.toFixed(2)} {baseSym}/{refCode})
+                    </p>
+                  )}
+                  {changeAmount > 0 && (
+                    <p className="text-sm text-primary font-medium">
+                      Cambio: {changeLabel}{isLocalMethod ? changeAmount.toFixed(2) : formatRefPrecision(changeAmount)}
+                    </p>
+                  )}
+                </div>
+
+                {/* ── Single method: Reference ── */}
+                {selectedMethod?.needsReference && (
+                  <div className="space-y-2">
+                    <Label htmlFor="reference">Referencia</Label>
+                    <Input
+                      id="reference"
+                      placeholder='Numero de referencia'
+                      value={reference}
+                      onChange={(e) => setReference(e.target.value)}
+                    />
+                  </div>
+                )}
+              </>
             )}
 
             {/* Action */}
@@ -539,7 +790,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
               className="w-full bg-primary hover:bg-primary/90 text-white"
               size="lg"
               onClick={handlePay}
-              disabled={loading || !resolvedCurrencyId || (selectedMethod?.isCredit && !clientId) || !method}
+              disabled={loading || (!isHybrid && !resolvedCurrencyId) || (selectedMethod?.isCredit && !clientId) || !method}
             >
               {loading ? (
                 <>
@@ -547,7 +798,10 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
                   Procesando...
                 </>
               ) : (
-                <>Confirmar Pago {isLocalMethod ? `${baseSym}${parseFloat(amount || '0').toFixed(2)}` : `${currencySymbol}${parseFloat(amount || '0')}`}</>
+                <>Confirmar Pago {isHybrid
+                  ? `${currencySymbol}${formatRefPrecision(total)}`
+                  : isLocalMethod ? `${baseSym}${parseFloat(amount || '0').toFixed(2)}` : `${currencySymbol}${parseFloat(amount || '0')}`
+                }</>
               )}
             </Button>
           </div>
