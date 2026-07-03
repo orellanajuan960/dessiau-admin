@@ -364,10 +364,8 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
         toast.error('El monto debe ser mayor a cero')
         return
       }
-      if (!isLocalMethod && parseFloat(amount) > total + 0.01 && !selectedMethod?.isCash && !selectedMethod?.isCredit) {
-        toast.error('El monto excede el total')
-        return
-      }
+      // No limit on payment amount — Math.min caps the stored amount at total.
+      // Overpayment is allowed (e.g. paying $2 with a divisa when total is $1.82).
       if (!resolvedCurrencyId) {
         toast.error('No se pudo determinar la moneda. Verifica la configuracion o crea una moneda en el sistema.')
         return
@@ -426,7 +424,8 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   const changeAmount = useMemo(() => {
     if (isHybrid) return 0
     const parsed = parseFloat(amount) || 0
-    if (selectedMethod?.isCash) {
+    // Show change for cash and divisas (methods where overpayment with physical money is normal)
+    if (selectedMethod?.isCash || selectedMethod?.code === 'divisas') {
       const limit = isLocalMethod ? totalLocal : total
       if (parsed > limit) {
         return parsed - limit
