@@ -201,7 +201,7 @@ export async function GET() {
         doc.setFontSize(8)
         doc.setTextColor(150)
         doc.text(
-          `Pagina ${pageCount} de ${doc.getNumberOfPages()}`,
+          'Pagina ' + String(doc.getNumberOfPages()),
           105,
           doc.internal.pageSize.height - 8,
           { align: 'center' }
