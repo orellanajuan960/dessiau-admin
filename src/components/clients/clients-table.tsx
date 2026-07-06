@@ -145,6 +145,9 @@ export function ClientsTable() {
   const [deleteSaleTarget, setDeleteSaleTarget] = useState<SaleRecord | null>(null)
   const [deletingSaleId, setDeletingSaleId] = useState<string | null>(null)
 
+  // Debtors PDF download
+  const [downloadingDebtorsPdf, setDownloadingDebtorsPdf] = useState(false)
+
   // Statement email
   const [sendingStatement, setSendingStatement] = useState<string | null>(null)
 
@@ -718,6 +721,32 @@ export function ClientsTable() {
             Inactivos ({inactiveCount})
           </Label>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={async () => {
+            setDownloadingDebtorsPdf(true)
+            try {
+              const res = await fetch('/api/clients/debtors-pdf', { credentials: 'include' })
+              if (!res.ok) throw new Error()
+              const blob = await res.blob()
+              const url = URL.createObjectURL(blob)
+              const a = document.createElement('a')
+              a.href = url
+              a.download = `clientes_deudores.pdf`
+              a.click()
+              URL.revokeObjectURL(url)
+            } catch {
+              toast.error('Error al generar PDF de deudores')
+            } finally {
+              setDownloadingDebtorsPdf(false)
+            }
+          }}
+          disabled={downloadingDebtorsPdf}
+        >
+          {downloadingDebtorsPdf ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
+          PDF Deudores
+        </Button>
         {canManage && (
           <Button onClick={openCreate} className="bg-primary hover:bg-primary/90 text-white">
             <Plus className="mr-2 h-4 w-4" /> Nuevo Cliente
