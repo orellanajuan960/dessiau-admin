@@ -143,10 +143,10 @@ export async function GET() {
     const now = new Date()
     const dateStr = now.toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })
     doc.setFontSize(9)
-    doc.text(`Fecha: ${dateStr}  |  Total deudores: ${debtors.length}`, 105, 35, { align: 'center' })
+    doc.text('Fecha: ' + dateStr + '  |  Total deudores: ' + String(debtors.length), 105, 35, { align: 'center' })
 
     // Build table
-    const head = [['#', 'Cliente', 'Telefono', ...currencyCols.map(c => `Deuda (${getSym(c)})']]]
+    const head = [['#', 'Cliente', 'Telefono', ...currencyCols.map(function(c) { return 'Deuda (' + getSym(c) + ')' })]]
 
     const body = debtors.map((d, i) => {
       const row: (string | number)[] = [
@@ -216,7 +216,7 @@ export async function GET() {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="clientes_deudores_${dateStr.replace(/\//g, '-')}.pdf"`,
+        'Content-Disposition': 'attachment; filename="clientes_deudores_' + dateStr.replace(/\//g, '-') + '.pdf"',
       },
     })
   } catch (error) {
