@@ -37,20 +37,12 @@ function fmtDate(d: Date): string {
   })
 }
 
-function fmtStock(stock: number): string {
-  return stock % 1 === 0 ? String(Math.round(stock)) : fmt(stock, 2)
-}
-
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface ProductRow {
   name: string
-  sku: string | null
-  categoryName: string
   price: number
   currencySymbol: string
-  stock: number
-  noStock: boolean
 }
 
 // ─── PDF Generator ────────────────────────────────────────────────────────────
@@ -112,12 +104,10 @@ function generateProductsPDF(
 
   // ─── Summary ────────────────────────────────────────────────────────────
   const totalProducts = products.length
-  const totalWithStock = products.filter(p => !p.noStock).length
-  const totalNoStock = products.filter(p => p.noStock).length
 
   doc.setFillColor(240, 245, 255)
   doc.setDrawColor(...C.primaryLight)
-  doc.roundedRect(45, 106, pw - 90, 44, 3, 3, 'FD')
+  doc.roundedRect(45, 106, pw - 90, 30, 3, 3, 'FD')
 
   doc.setFontSize(10)
   doc.setTextColor(...C.primary)
@@ -127,69 +117,35 @@ function generateProductsPDF(
   doc.setFontSize(9)
   doc.setTextColor(...C.dark)
   doc.setFont('helvetica', 'normal')
-  doc.text('Total Productos: ' + String(totalProducts), 55, 136)
-  doc.text('Con Stock: ' + String(totalWithStock), 55 + (pw - 90) * 0.35, 136)
-  doc.text('Sin Stock: ' + String(totalNoStock), 55 + (pw - 90) * 0.6, 136)
-
-  const inStockPercent = totalProducts > 0 ? ((totalWithStock / totalProducts) * 100).toFixed(1) : '0.0'
-  const noStockPercent = totalProducts > 0 ? ((totalNoStock / totalProducts) * 100).toFixed(1) : '0.0'
-  doc.setFontSize(8)
-  doc.setTextColor(...C.gray)
-  doc.text('(' + inStockPercent + '%)', 55 + (pw - 90) * 0.35 + 70, 137)
-  doc.text('(' + noStockPercent + '%)', 55 + (pw - 90) * 0.6 + 55, 137)
-
-  doc.setFontSize(9)
-  doc.setTextColor(...C.dark)
-  doc.text('Productos activos en inventario', 55, 146)
+  doc.text('Total de productos: ' + String(totalProducts), 55, 132)
 
   // ─── Table ──────────────────────────────────────────────────────────────
   const bodyRows = products.map((p, i) => [
     String(i + 1),
     p.name,
-    p.sku || '\u2014',
-    p.categoryName || '\u2014',
     p.currencySymbol + ' ' + fmt(p.price),
-    fmtStock(p.stock),
-    p.noStock ? '\u2717' : '\u2713',
   ])
 
   autoTable(doc, {
-    startY: 158,
+    startY: 144,
     theme: 'grid',
     margin: { left: 45, right: 45 },
-    head: [['#', 'Producto', 'SKU', 'Categoria', 'Precio', 'Stock', 'Sin Stock']],
+    head: [['#', 'Producto', 'Precio']],
     body: bodyRows.length > 0 ? bodyRows : [['No se encontraron productos con los filtros seleccionados.']],
     styles: {
-      fontSize: 7.5,
+      fontSize: 9,
       cellPadding: 3,
     },
     headStyles: {
       fillColor: C.primary,
       textColor: C.white,
       fontStyle: 'bold',
-      fontSize: 8,
+      fontSize: 10,
     },
     columnStyles: {
       0: { halign: 'center', cellWidth: 25, textColor: C.gray },
       1: { cellWidth: 'auto' },
-      2: { halign: 'center', cellWidth: 55, textColor: C.gray },
-      3: { cellWidth: 80 },
-      4: { halign: 'right', fontStyle: 'bold' },
-      5: { halign: 'center', fontStyle: 'bold' },
-      6: { halign: 'center', fontStyle: 'bold' },
-    },
-    didParseCell: (data) => {
-      if (data.section === 'body' && bodyRows.length > 0) {
-        // Color stock column
-        if (data.column.index === 5) {
-          data.cell.styles.textColor = products[data.row.index]?.noStock ? C.red : C.green
-        }
-        // Color sin stock column
-        if (data.column.index === 6) {
-          data.cell.styles.textColor = products[data.row.index]?.noStock ? C.red : C.green
-          data.cell.styles.fontSize = 9
-        }
-      }
+      2: { halign: 'right', fontStyle: 'bold', cellWidth: 80 },
     },
   })
 
@@ -270,19 +226,11 @@ export async function GET(request: NextRequest) {
     }
 
     // Build product rows
-    const rows: ProductRow[] = products.map(p => {
-      const inv = p.inventories[0]
-      const stock = inv?.stock ?? 0
-      return {
-        name: p.name,
-        sku: p.sku,
-        categoryName: p.category?.name || '',
-        price: p.price,
-        currencySymbol: p.currency?.symbol || '$',
-        stock,
-        noStock: !inv || inv.stock <= 0,
-      }
-    })
+    const rows: ProductRow[] = products.map(p => ({
+      name: p.name,
+      price: p.price,
+      currencySymbol: p.currency?.symbol || '$',
+    }))
 
     // Generate PDF
     const pdfBuffer = generateProductsPDF(rows, companyInfo)
