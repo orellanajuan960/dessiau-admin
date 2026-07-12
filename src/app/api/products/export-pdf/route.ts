@@ -91,9 +91,9 @@ function generateProductsPDF(
   doc.setTextColor(209, 213, 219)
   doc.setFont('helvetica', 'normal')
 
-  const rifLine = companyInfo.rif ? `RIF: ${companyInfo.rif}` : ''
+  const rifLine = companyInfo.rif ? 'RIF: ' + companyInfo.rif : ''
   const addressLine = companyInfo.address || ''
-  const phoneLine = companyInfo.phone ? `Tel: ${companyInfo.phone}` : ''
+  const phoneLine = companyInfo.phone ? 'Tel: ' + companyInfo.phone : ''
   const parts = [rifLine, addressLine, phoneLine].filter(Boolean).join('  |  ')
   if (parts) {
     doc.text(parts, 45, 46)
@@ -108,7 +108,7 @@ function generateProductsPDF(
   doc.setFontSize(9)
   doc.setTextColor(...C.gray)
   doc.setFont('helvetica', 'normal')
-  doc.text(`Fecha de generacion: ${fmtDate(new Date())}`, 45, 96)
+  doc.text('Fecha de generacion: ' + fmtDate(new Date()), 45, 96)
 
   // ─── Summary ────────────────────────────────────────────────────────────
   const totalProducts = products.length
@@ -127,16 +127,16 @@ function generateProductsPDF(
   doc.setFontSize(9)
   doc.setTextColor(...C.dark)
   doc.setFont('helvetica', 'normal')
-  doc.text(`Total Productos: ${totalProducts}`, 55, 136)
-  doc.text(`Con Stock: ${totalWithStock}`, 55 + (pw - 90) * 0.35, 136)
-  doc.text(`Sin Stock: ${totalNoStock}`, 55 + (pw - 90) * 0.6, 136)
+  doc.text('Total Productos: ' + String(totalProducts), 55, 136)
+  doc.text('Con Stock: ' + String(totalWithStock), 55 + (pw - 90) * 0.35, 136)
+  doc.text('Sin Stock: ' + String(totalNoStock), 55 + (pw - 90) * 0.6, 136)
 
   const inStockPercent = totalProducts > 0 ? ((totalWithStock / totalProducts) * 100).toFixed(1) : '0.0'
   const noStockPercent = totalProducts > 0 ? ((totalNoStock / totalProducts) * 100).toFixed(1) : '0.0'
   doc.setFontSize(8)
   doc.setTextColor(...C.gray)
-  doc.text(`(${inStockPercent}%)`, 55 + (pw - 90) * 0.35 + 70, 137)
-  doc.text(`(${noStockPercent}%)`, 55 + (pw - 90) * 0.6 + 55, 137)
+  doc.text('(' + inStockPercent + '%)', 55 + (pw - 90) * 0.35 + 70, 137)
+  doc.text('(' + noStockPercent + '%)', 55 + (pw - 90) * 0.6 + 55, 137)
 
   doc.setFontSize(9)
   doc.setTextColor(...C.dark)
@@ -148,7 +148,7 @@ function generateProductsPDF(
     p.name,
     p.sku || '\u2014',
     p.categoryName || '\u2014',
-    `${p.currencySymbol} ${fmt(p.price)}`,
+    p.currencySymbol + ' ' + fmt(p.price),
     fmtStock(p.stock),
     p.noStock ? '\u2717' : '\u2713',
   ])
@@ -209,15 +209,15 @@ function generateProductsPDF(
     doc.setFont('helvetica', 'normal')
 
     const footerCompany = companyInfo.businessName || 'JO-Administrativo'
-    const footerRif = companyInfo.rif ? `  |  RIF: ${companyInfo.rif}` : ''
+    const footerRif = companyInfo.rif ? '  |  RIF: ' + companyInfo.rif : ''
     doc.text(
-      `${footerCompany}${footerRif}  |  Generado por JO-Administrativo`,
+      footerCompany + footerRif + '  |  Generado por JO-Administrativo',
       pw / 2, ph - 32, { align: 'center' },
     )
 
     if (totalPages > 1) {
       doc.text(
-        `Pagina ${i} de ${totalPages}`,
+        'Pagina ' + String(i) + ' de ' + String(totalPages),
         pw / 2, ph - 24, { align: 'center' },
       )
     }

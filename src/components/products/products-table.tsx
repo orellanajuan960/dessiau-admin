@@ -41,7 +41,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { Plus, Search, Edit, Trash2, Package, Eye, EyeOff, Upload, ImageIcon, X, Loader2, Printer, Barcode, AlertTriangle, Ban } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Package, Eye, EyeOff, Upload, ImageIcon, X, Loader2, Printer, Barcode, AlertTriangle, Ban, FileText } from 'lucide-react'
 import { toast } from 'sonner'
 import { ProductImportDialog } from './product-import-dialog'
 import { BarcodeLabelSelector } from './barcode-label-selector'
@@ -126,9 +126,32 @@ export function ProductsTable() {
   const [editProduct, setEditProduct] = useState<Product | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const [labelsOpen, setLabelsOpen] = useState(false)
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
   const [generatingLabel, setGeneratingLabel] = useState(false)
   const [hardDeleteDialogOpen, setHardDeleteDialogOpen] = useState(false)
   const [hardDeleteResult, setHardDeleteResult] = useState<{ dependencies: string[]; canHardDelete: boolean } | null>(null)
+
+  const handleDownloadPdf = async () => {
+    setDownloadingPdf(true)
+    try {
+      const params = new URLSearchParams()
+      if (selectedBranchId) params.set('branchId', selectedBranchId)
+      params.set('active', showInactive ? 'all' : 'true')
+      const res = await fetch('/api/products/export-pdf?' + params.toString(), { credentials: 'include' })
+      if (!res.ok) throw new Error('Error al generar PDF')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'listado_productos.pdf'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      toast.error('Error al generar el PDF de productos')
+    } finally {
+      setDownloadingPdf(false)
+    }
+  }
 
   // Form state
   const [formName, setFormName] = useState('')
@@ -538,6 +561,13 @@ export function ProductsTable() {
             onClick={() => setLabelsOpen(true)}
           >
             <Printer className="mr-2 h-4 w-4" /> Etiquetas
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleDownloadPdf}
+            disabled={downloadingPdf}
+          >
+            {downloadingPdf ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />} PDF
           </Button>
         </div>
       </div>
