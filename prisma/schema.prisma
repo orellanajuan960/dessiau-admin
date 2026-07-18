@@ -166,6 +166,7 @@ model Branch {
   cashRegisters        CashRegister[]
   expenses             Expense[]
   inventoryAdjustments InventoryAdjustment[]
+  stockHistories        StockHistory[]
   users                User[]
 }
 

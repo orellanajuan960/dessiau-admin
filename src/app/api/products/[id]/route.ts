@@ -5,7 +5,6 @@ import { Prisma } from '@prisma/client'
 import { requireAuth } from '@/lib/require-auth'
 import { getPermissions } from '@/lib/permissions'
 import { logStockChange } from '@/lib/stock-history'
-import { logStockChange } from '@/lib/stock-history'
 
 export async function GET(
   _request: NextRequest,
