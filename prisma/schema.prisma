@@ -29,6 +29,7 @@ model User {
   clientPayments    ClientPayment[]
   audits            CashAudit[]
   auditLogs         AuditLog[]
+  stockHistory      StockHistory[]
   branch            Branch?           @relation(fields: [branchId], references: [id])
 }
 
@@ -120,7 +121,8 @@ model Product {
   inventories   Inventory[]
   saleLines     SaleLine[]
   purchaseLines PurchaseLine[]
-  adjustments   InventoryAdjustment[]
+  adjustments       InventoryAdjustment[]
+  stockHistory      StockHistory[]
   recipeAsParent   RecipeComponent[] @relation("ParentProduct")
   recipeAsComponent RecipeComponent[] @relation("ComponentProduct")
 }
@@ -347,6 +349,26 @@ model InventoryAdjustment {
   product Product @relation(fields: [productId], references: [id])
   user    User    @relation(fields: [userId], references: [id])
   branch  Branch  @relation(fields: [branchId], references: [id])
+}
+
+model StockHistory {
+  id            String    @id @default(cuid())
+  productId     String
+  branchId      String
+  previousStock Float
+  newStock      Float
+  change        Float
+  source        String
+  sourceId      String?
+  details       String?
+  userId        String?
+  createdAt     DateTime  @default(now())
+
+  product Product @relation(fields: [productId], references: [id])
+  branch  Branch  @relation(fields: [branchId], references: [id])
+  user    User?   @relation(fields: [userId], references: [id])
+
+  @@index([productId, branchId, createdAt])
 }
 
 model AccountReceivable {

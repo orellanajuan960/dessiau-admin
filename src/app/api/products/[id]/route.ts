@@ -4,6 +4,8 @@ import { resolveBranchId } from '@/lib/resolve-branch'
 import { Prisma } from '@prisma/client'
 import { requireAuth } from '@/lib/require-auth'
 import { getPermissions } from '@/lib/permissions'
+import { logStockChange } from '@/lib/stock-history'
+import { logStockChange } from '@/lib/stock-history'
 
 export async function GET(
   _request: NextRequest,
@@ -76,9 +78,16 @@ export async function PUT(
         where: { productId: id, branchId: body.branchId },
       })
       if (inventory) {
+        const prevStock = inventory.stock
         await db.inventory.update({
           where: { id: inventory.id },
-          data: { stock: 0 }, // Set stock to 0 to effectively disable in this branch
+          data: { stock: 0 },
+        })
+        await logStockChange({
+          productId: id, branchId: body.branchId,
+          previousStock: prevStock, newStock: 0,
+          source: 'branch_disable', userId: auth.userId,
+          details: 'Producto desactivado en sucursal',
         })
       }
       const product = await db.product.findUnique({
@@ -94,9 +103,17 @@ export async function PUT(
         where: { productId: id, branchId: body.branchId },
       })
       if (inventory) {
+        const prevStock = inventory.stock
+        const newStock = body.stock !== undefined ? body.stock : 1
         await db.inventory.update({
           where: { id: inventory.id },
-          data: { stock: body.stock !== undefined ? body.stock : 1 },
+          data: { stock: newStock },
+        })
+        await logStockChange({
+          productId: id, branchId: body.branchId,
+          previousStock: prevStock, newStock,
+          source: 'branch_enable', userId: auth.userId,
+          details: 'Producto activado en sucursal',
         })
       }
       const product = await db.product.findUnique({
@@ -152,6 +169,7 @@ export async function PUT(
         where: { productId: id, branchId },
       })
       if (inventory) {
+        const prevStock = inventory.stock
         const updateData: Record<string, number> = {}
         if (body.initialStock !== undefined) updateData.stock = body.initialStock
         if (body.minStock !== undefined) updateData.minStock = body.minStock
@@ -160,6 +178,14 @@ export async function PUT(
           where: { id: inventory.id },
           data: updateData,
         })
+        if (body.initialStock !== undefined && body.initialStock !== prevStock) {
+          await logStockChange({
+            productId: id, branchId,
+            previousStock: prevStock, newStock: body.initialStock,
+            source: 'manual_edit', userId: auth.userId,
+            details: 'Edicion manual de stock',
+          })
+        }
       } else if (body.branchId) {
         await db.inventory.create({
           data: {
@@ -170,6 +196,14 @@ export async function PUT(
             price: body.branchPrice ?? 0,
           },
         })
+        if ((body.initialStock ?? 0) > 0) {
+          await logStockChange({
+            productId: id, branchId: body.branchId,
+            previousStock: 0, newStock: body.initialStock ?? 0,
+            source: 'manual_edit', userId: auth.userId,
+            details: 'Stock inicial al crear inventario en sucursal',
+          })
+        }
       }
     }
 

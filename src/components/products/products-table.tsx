@@ -49,6 +49,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { useCurrency } from '@/hooks/use-currency'
 import { useSetting } from '@/stores/use-app-store'
 import { getCurrencyForCountry } from '@/lib/country-currency'
+import { cn } from '@/lib/utils'
 
 // ── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -127,6 +128,18 @@ export function ProductsTable() {
   const [importOpen, setImportOpen] = useState(false)
   const [labelsOpen, setLabelsOpen] = useState(false)
   const [downloadingPdf, setDownloadingPdf] = useState(false)
+  const [stockHistoryOpen, setStockHistoryOpen] = useState(false)
+  const [stockHistory, setStockHistory] = useState<Array<{
+    id: string
+    date: string
+    previousStock: number
+    newStock: number
+    change: number
+    sourceLabel: string
+    details: string | null
+    userName: string | null
+  }>>([])
+  const [loadingHistory, setLoadingHistory] = useState(false)
   const [generatingLabel, setGeneratingLabel] = useState(false)
   const [hardDeleteDialogOpen, setHardDeleteDialogOpen] = useState(false)
   const [hardDeleteResult, setHardDeleteResult] = useState<{ dependencies: string[]; canHardDelete: boolean } | null>(null)
@@ -150,6 +163,34 @@ export function ProductsTable() {
       toast.error('Error al generar el PDF de productos')
     } finally {
       setDownloadingPdf(false)
+    }
+  }
+
+  const handleOpenStockHistory = async () => {
+    if (!editProduct) return
+    setStockHistoryOpen(true)
+    setLoadingHistory(true)
+    try {
+      const params = new URLSearchParams()
+      if (selectedBranchId) params.set('branchId', selectedBranchId)
+      const res = await fetch('/api/products/' + editProduct.id + '/stock-history?' + params.toString(), { credentials: 'include' })
+      if (!res.ok) throw new Error()
+      const data = await res.json()
+      setStockHistory(data)
+    } catch {
+      setStockHistory([])
+      toast.error('Error al cargar el historial de stock')
+    } finally {
+      setLoadingHistory(false)
+    }
+  }
+
+  const formatHistoryDate = (dateStr: string) => {
+    try {
+      const d = new Date(dateStr)
+      return d.toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + d.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })
+    } catch {
+      return dateStr
     }
   }
 
@@ -924,6 +965,16 @@ export function ProductsTable() {
                 />
               </div>
             </div>
+            {editProduct && (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={handleOpenStockHistory}
+              >
+                <FileText className="mr-2 h-4 w-4" /> Ver Historial de Stock
+              </Button>
+            )}
             {multiEnabled && (
               <div className="space-y-2">
                 <Label htmlFor="pcurrency">Moneda</Label>
@@ -954,6 +1005,69 @@ export function ProductsTable() {
             >
               {saving ? 'Guardando...' : editProduct ? 'Actualizar' : 'Crear Producto'}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Stock History Dialog */}
+      <Dialog open={stockHistoryOpen} onOpenChange={setStockHistoryOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Historial de Stock - {editProduct?.name}</DialogTitle>
+            <DialogDescription>
+              Registro de cambios de stock en esta sucursal
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto">
+            {loadingHistory ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : stockHistory.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                No hay registros de cambios de stock
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Fecha</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead className="text-right">Anterior</TableHead>
+                    <TableHead className="text-right">Nuevo</TableHead>
+                    <TableHead className="text-right">Cambio</TableHead>
+                    <TableHead>Detalle</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {stockHistory.map((row) => (
+                    <TableRow key={row.id}>
+                      <TableCell className="text-xs whitespace-nowrap">
+                        {formatHistoryDate(row.date)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{row.sourceLabel}</Badge>
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {row.previousStock}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums font-medium">
+                        {row.newStock}
+                      </TableCell>
+                      <TableCell className={cn(
+                        'text-right tabular-nums font-medium',
+                        row.change > 0 ? 'text-green-600' : 'text-red-600'
+                      )}>
+                        {row.change > 0 ? '+' : ''}{row.change}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
+                        {row.details || '-'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </div>
         </DialogContent>
       </Dialog>

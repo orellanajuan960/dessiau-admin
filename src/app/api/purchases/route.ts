@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveBranchId, branchFromBody } from '@/lib/resolve-branch'
 import { notifyUser } from '@/lib/notify'
+import { logStockChange } from '@/lib/stock-history'
 
 export async function GET(request: NextRequest) {
   try {
@@ -72,6 +73,8 @@ export async function POST(request: NextRequest) {
         },
       })
 
+      const purchaseId = newPurchase.id
+
       // Update inventory and recalculate average cost
       for (const line of lines) {
         const inventory = await tx.inventory.findUnique({
@@ -102,6 +105,19 @@ export async function POST(request: NextRequest) {
               },
             })
           }
+          await tx.stockHistory.create({
+            data: {
+              productId: line.productId,
+              branchId,
+              previousStock: oldStock,
+              newStock: Math.round(newStock * 10000) / 10000,
+              change: Math.round(line.quantity * 10000) / 10000,
+              source: 'purchase',
+              sourceId: purchaseId,
+              details: 'Compra recibida',
+              userId: auth.userId,
+            },
+          })
 
           await tx.product.update({
             where: { id: line.productId },

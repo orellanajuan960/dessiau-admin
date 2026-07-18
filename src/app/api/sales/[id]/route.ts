@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveBranchId } from '@/lib/resolve-branch'
 import { logAction } from '@/lib/audit-log'
+import { logStockChange } from '@/lib/stock-history'
 
 export async function GET(
   _request: NextRequest,
@@ -65,9 +66,24 @@ export async function POST(
           where: { productId_branchId: { productId: line.productId, branchId: sale.branchId } },
         })
         if (inventory) {
+          const prevStock = inventory.stock
+          const newStock = Math.round((prevStock + line.quantity) * 10000) / 10000
           await tx.inventory.update({
             where: { id: inventory.id },
             data: { stock: { increment: line.quantity } },
+          })
+          await tx.stockHistory.create({
+            data: {
+              productId: line.productId,
+              branchId: sale.branchId,
+              previousStock: prevStock,
+              newStock,
+              change: Math.round(line.quantity * 10000) / 10000,
+              source: 'void_sale',
+              sourceId: id,
+              details: 'Anulacion de venta',
+              userId: auth.userId,
+            },
           })
         }
       }
@@ -162,9 +178,24 @@ export async function DELETE(
           where: { productId_branchId: { productId: line.productId, branchId: sale.branchId } },
         })
         if (inventory) {
+          const prevStock = inventory.stock
+          const newStock = Math.round((prevStock + line.quantity) * 10000) / 10000
           await tx.inventory.update({
             where: { id: inventory.id },
             data: { stock: { increment: line.quantity } },
+          })
+          await tx.stockHistory.create({
+            data: {
+              productId: line.productId,
+              branchId: sale.branchId,
+              previousStock: prevStock,
+              newStock,
+              change: Math.round(line.quantity * 10000) / 10000,
+              source: 'credit_sale_deleted',
+              sourceId: id,
+              details: 'Eliminacion de venta de credito',
+              userId: auth.userId,
+            },
           })
         }
       }

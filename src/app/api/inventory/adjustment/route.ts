@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveBranchId } from '@/lib/resolve-branch'
+import { logStockChange } from '@/lib/stock-history'
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,15 +17,31 @@ export async function POST(request: NextRequest) {
         throw new Error('Inventario no encontrado')
       }
 
+      const prevStock = inv.stock
+      const newStock = Math.round((prevStock - quantity) * 10000) / 10000
       await tx.inventory.update({
         where: { id: inv.id },
         data: { stock: { decrement: quantity } },
       })
 
-      return tx.inventoryAdjustment.create({
+      const adj = await tx.inventoryAdjustment.create({
         data: { productId, branchId, type, quantity, reason, userId },
         include: { product: true },
       })
+
+      await tx.stockHistory.create({
+        data: {
+          productId, branchId,
+          previousStock: prevStock, newStock,
+          change: Math.round(-quantity * 10000) / 10000,
+          source: 'adjustment',
+          sourceId: adj.id,
+          details: 'Ajuste de inventario (' + type + '): ' + reason,
+          userId,
+        },
+      })
+
+      return adj
     })
 
     return NextResponse.json(adjustment, { status: 201 })
