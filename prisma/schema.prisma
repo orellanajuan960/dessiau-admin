@@ -166,7 +166,7 @@ model Branch {
   cashRegisters        CashRegister[]
   expenses             Expense[]
   inventoryAdjustments InventoryAdjustment[]
-  stockHistories        StockHistory[]
+  stockHistories        StockHistory[] @relation("BranchStockHistories")
   users                User[]
 }
 
@@ -366,7 +366,7 @@ model StockHistory {
   createdAt     DateTime  @default(now())
 
   product Product @relation(fields: [productId], references: [id])
-  branch  Branch  @relation(fields: [branchId], references: [id])
+  branch  Branch  @relation("BranchStockHistories", fields: [branchId], references: [id])
   user    User?   @relation(fields: [userId], references: [id])
 
   @@index([productId, branchId, createdAt])

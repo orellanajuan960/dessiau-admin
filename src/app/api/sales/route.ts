@@ -218,7 +218,7 @@ export async function POST(request: NextRequest) {
               source: 'sale',
               sourceId: saleId,
               details: 'Venta #' + saleId.slice(-6),
-              userId: auth.userId,
+              userId: userId,
             },
           })
         }
