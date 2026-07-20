@@ -72,19 +72,21 @@ export async function POST(
             where: { id: inventory.id },
             data: { stock: { increment: line.quantity } },
           })
-          await tx.stockHistory.create({
-            data: {
-              productId: line.productId,
-              branchId: sale.branchId,
-              previousStock: prevStock,
-              newStock,
-              change: Math.round(line.quantity * 10000) / 10000,
-              source: 'void_sale',
-              sourceId: id,
-              details: 'Anulacion de venta',
-              userId: auth.userId,
-            },
-          })
+          try {
+            await tx.stockHistory.create({
+              data: {
+                productId: line.productId,
+                branchId: sale.branchId,
+                previousStock: prevStock,
+                newStock,
+                change: Math.round(line.quantity * 10000) / 10000,
+                source: 'void_sale',
+                sourceId: id,
+                details: 'Anulacion de venta',
+                userId: userId || null,
+              },
+            })
+          } catch (_e) { /* non-critical */ }
         }
       }
 
@@ -184,19 +186,21 @@ export async function DELETE(
             where: { id: inventory.id },
             data: { stock: { increment: line.quantity } },
           })
-          await tx.stockHistory.create({
-            data: {
-              productId: line.productId,
-              branchId: sale.branchId,
-              previousStock: prevStock,
-              newStock,
-              change: Math.round(line.quantity * 10000) / 10000,
-              source: 'credit_sale_deleted',
-              sourceId: id,
-              details: 'Eliminacion de venta de credito',
-              userId: auth.userId,
-            },
-          })
+          try {
+            await tx.stockHistory.create({
+              data: {
+                productId: line.productId,
+                branchId: sale.branchId,
+                previousStock: prevStock,
+                newStock,
+                change: Math.round(line.quantity * 10000) / 10000,
+                source: 'credit_sale_deleted',
+                sourceId: id,
+                details: 'Eliminacion de venta de credito',
+                userId: userId || null,
+              },
+            })
+          } catch (_e) { /* non-critical */ }
         }
       }
 

@@ -208,19 +208,21 @@ export async function POST(request: NextRequest) {
             where: { id: inventory.id },
             data: { stock: newStock },
           })
-          await tx.stockHistory.create({
-            data: {
-              productId: line.productId,
-              branchId,
-              previousStock: prevStock,
-              newStock,
-              change: Math.round((newStock - prevStock) * 10000) / 10000,
-              source: 'sale',
-              sourceId: saleId,
-              details: 'Venta #' + saleId.slice(-6),
-              userId: userId,
-            },
-          })
+          try {
+            await tx.stockHistory.create({
+              data: {
+                productId: line.productId,
+                branchId,
+                previousStock: prevStock,
+                newStock,
+                change: Math.round((newStock - prevStock) * 10000) / 10000,
+                source: 'sale',
+                sourceId: saleId,
+                details: 'Venta #' + saleId.slice(-6),
+                userId: userId,
+              },
+            })
+          } catch (_e) { /* non-critical: don't break sale */ }
         }
       }
 
@@ -348,6 +350,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(sale, { status: 201 })
   } catch (error) {
-    return NextResponse.json({ error: 'Error al crear venta' }, { status: 500 })
+    console.error('Error al crear venta:', error)
+    const msg = error instanceof Error ? error.message : 'Error desconocido'
+    return NextResponse.json({ error: 'Error al crear venta: ' + msg }, { status: 500 })
   }
 }

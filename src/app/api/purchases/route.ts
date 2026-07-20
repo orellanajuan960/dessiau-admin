@@ -105,19 +105,21 @@ export async function POST(request: NextRequest) {
               },
             })
           }
-          await tx.stockHistory.create({
-            data: {
-              productId: line.productId,
-              branchId,
-              previousStock: oldStock,
-              newStock: Math.round(newStock * 10000) / 10000,
-              change: Math.round(line.quantity * 10000) / 10000,
-              source: 'purchase',
-              sourceId: purchaseId,
-              details: 'Compra recibida',
-              userId: auth.userId,
-            },
-          })
+          try {
+            await tx.stockHistory.create({
+              data: {
+                productId: line.productId,
+                branchId,
+                previousStock: oldStock,
+                newStock: Math.round(newStock * 10000) / 10000,
+                change: Math.round(line.quantity * 10000) / 10000,
+                source: 'purchase',
+                sourceId: purchaseId,
+                details: 'Compra recibida',
+                userId: body.userId || null,
+              },
+            })
+          } catch (_e) { /* non-critical */ }
 
           await tx.product.update({
             where: { id: line.productId },

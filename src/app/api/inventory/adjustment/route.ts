@@ -29,17 +29,19 @@ export async function POST(request: NextRequest) {
         include: { product: true },
       })
 
-      await tx.stockHistory.create({
-        data: {
-          productId, branchId,
-          previousStock: prevStock, newStock,
-          change: Math.round(-quantity * 10000) / 10000,
-          source: 'adjustment',
-          sourceId: adj.id,
-          details: 'Ajuste de inventario (' + type + '): ' + reason,
-          userId,
-        },
-      })
+      try {
+        await tx.stockHistory.create({
+          data: {
+            productId, branchId,
+            previousStock: prevStock, newStock,
+            change: Math.round(-quantity * 10000) / 10000,
+            source: 'adjustment',
+            sourceId: adj.id,
+            details: 'Ajuste de inventario (' + type + '): ' + reason,
+            userId,
+          },
+        })
+      } catch (_e) { /* non-critical */ }
 
       return adj
     })
