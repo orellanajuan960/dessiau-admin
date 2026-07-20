@@ -1,11 +1,9 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveBranchId, branchFromBody } from '@/lib/resolve-branch'
-import { formatCurrency } from '@/lib/currency'
 import { getPaymentMethodsFromDB, FALLBACK_METHODS } from '@/lib/payment-methods'
 import { convertToRefCurrency } from '@/lib/currency-conversion'
 import { getCurrencyForCountry } from '@/lib/country-currency'
-import { logStockChange } from '@/lib/stock-history'
 
 export async function GET(request: NextRequest) {
   try {
@@ -195,34 +193,17 @@ export async function POST(request: NextRequest) {
       })
 
       // Deduct inventory stock for each product
-      const saleId = sale.id
-      for (const line of lines) {
-        const qty = Math.round(line.quantity * 10000) / 10000
+      for (const saleLine of lines) {
+        const qty = Math.round(saleLine.quantity * 10000) / 10000
         const inventory = await tx.inventory.findUnique({
-          where: { productId_branchId: { productId: line.productId, branchId } },
+          where: { productId_branchId: { productId: saleLine.productId, branchId } },
         })
         if (inventory) {
-          const prevStock = inventory.stock
           const newStock = Math.round((inventory.stock - qty) * 10000) / 10000
           await tx.inventory.update({
             where: { id: inventory.id },
             data: { stock: newStock },
           })
-          try {
-            await tx.stockHistory.create({
-              data: {
-                productId: line.productId,
-                branchId,
-                previousStock: prevStock,
-                newStock,
-                change: Math.round((newStock - prevStock) * 10000) / 10000,
-                source: 'sale',
-                sourceId: saleId,
-                details: 'Venta #' + saleId.slice(-6),
-                userId: userId,
-              },
-            })
-          } catch (_e) { /* non-critical: don't break sale */ }
         }
       }
 
@@ -350,8 +331,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(sale, { status: 201 })
   } catch (error) {
-    console.error('Error al crear venta:', error)
-    const msg = error instanceof Error ? error.message : 'Error desconocido'
-    return NextResponse.json({ error: 'Error al crear venta: ' + msg }, { status: 500 })
+    return NextResponse.json({ error: 'Error al crear venta' }, { status: 500 })
   }
 }

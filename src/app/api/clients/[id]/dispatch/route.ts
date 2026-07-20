@@ -67,21 +67,6 @@ export async function POST(
             where: { id: inventory.id },
             data: { stock: { decrement: line.quantity } },
           })
-          try {
-            await tx.stockHistory.create({
-              data: {
-                productId: line.productId,
-                branchId,
-                previousStock: prevStock,
-                newStock,
-                change: Math.round(-line.quantity * 10000) / 10000,
-                source: 'dispatch',
-                sourceId: null,
-                details: 'Despacho a cliente',
-                userId,
-              },
-            })
-          } catch (_e) { /* non-critical */ }
         }
 
         totalAmount += lineTotal

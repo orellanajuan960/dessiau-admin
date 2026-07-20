@@ -1,7 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveBranchId } from '@/lib/resolve-branch'
-import { logStockChange } from '@/lib/stock-history'
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,20 +27,6 @@ export async function POST(request: NextRequest) {
         data: { productId, branchId, type, quantity, reason, userId },
         include: { product: true },
       })
-
-      try {
-        await tx.stockHistory.create({
-          data: {
-            productId, branchId,
-            previousStock: prevStock, newStock,
-            change: Math.round(-quantity * 10000) / 10000,
-            source: 'adjustment',
-            sourceId: adj.id,
-            details: 'Ajuste de inventario (' + type + '): ' + reason,
-            userId,
-          },
-        })
-      } catch (_e) { /* non-critical */ }
 
       return adj
     })
