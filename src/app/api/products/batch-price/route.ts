@@ -1,12 +1,11 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { updatePendingInvoices } from '@/lib/update-pending-invoices'
 
 interface PriceItem {
-  branchId: string
   productId: string
   newPrice: number
   previousPrice: number
-  hadInventory: boolean
 }
 
 export async function POST(request: NextRequest) {
@@ -22,72 +21,46 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No hay ajustes para aplicar' }, { status: 400 })
     }
 
-    // Group by branch
-    const byBranch = new Map<string, PriceItem[]>()
+    const previousPrices = adjustments.map(item => ({
+      productId: item.productId,
+      previousPrice: item.previousPrice,
+    }))
+
+    // Create adjustment record for revert capability
+    const adj = await db.priceAdjustment.create({
+      data: {
+        branchId: '', // global, not per-branch
+        percentage,
+        previousPrices,
+        userId: userId || null,
+      },
+    })
+
+    // Update Product.price for each product
     for (const item of adjustments) {
-      const list = byBranch.get(item.branchId) || []
-      list.push(item)
-      byBranch.set(item.branchId, list)
-    }
-
-    const adjustmentIds: string[] = []
-
-    for (const [branchId, items] of byBranch) {
-      const previousPrices = items.map(item => ({
-        productId: item.productId,
-        previousPrice: item.previousPrice,
-        hadInventory: item.hadInventory,
-      }))
-
-      await db.$transaction(async (tx) => {
-        // Create adjustment record
-        const adj = await tx.priceAdjustment.create({
-          data: {
-            branchId,
-            percentage,
-            previousPrices,
-            userId: userId || null,
-          },
-        })
-        adjustmentIds.push(adj.id)
-
-        // Update each product inventory price
-        for (const item of items) {
-          const newPrice = Math.round(item.newPrice * 100) / 100
-
-          if (item.hadInventory) {
-            // Update existing inventory
-            await tx.inventory.updateMany({
-              where: { productId: item.productId, branchId },
-              data: { price: newPrice },
-            })
-          } else {
-            // Create inventory with the new price (stock 0, minStock 0)
-            const existing = await tx.inventory.findUnique({
-              where: { productId_branchId: { productId: item.productId, branchId } },
-            })
-            if (existing) {
-              await tx.inventory.update({
-                where: { id: existing.id },
-                data: { price: newPrice },
-              })
-            } else {
-              await tx.inventory.create({
-                data: {
-                  productId: item.productId,
-                  branchId,
-                  stock: 0,
-                  minStock: 0,
-                  price: newPrice,
-                },
-              })
-            }
-          }
-        }
+      const newPrice = Math.round(item.newPrice * 100) / 100
+      await db.product.update({
+        where: { id: item.productId },
+        data: { price: newPrice },
       })
     }
 
-    return NextResponse.json({ success: true, adjustmentIds })
+    // Update pending invoices for USD products (fire-and-forget)
+    const usdUpdates = adjustments.filter(a => {
+      // We'll check currency inside updatePendingInvoices, but we can
+      // pass all and let the function filter
+      return a.previousPrice > 0 && a.newPrice > 0
+    }).map(a => ({
+      productId: a.productId,
+      oldPrice: a.previousPrice,
+      newPrice: a.newPrice,
+    }))
+
+    if (usdUpdates.length > 0) {
+      updatePendingInvoices(usdUpdates).catch(() => {})
+    }
+
+    return NextResponse.json({ success: true, adjustmentId: adj.id })
   } catch (error) {
     return NextResponse.json({ error: 'Error al ajustar precios' }, { status: 500 })
   }

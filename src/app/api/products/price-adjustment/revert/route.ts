@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { updatePendingInvoices } from '@/lib/update-pending-invoices'
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,32 +22,36 @@ export async function POST(request: NextRequest) {
     const previousPrices = adjustment.previousPrices as Array<{
       productId: string
       previousPrice: number
-      hadInventory: boolean
     }>
 
-    const branchId = adjustment.branchId
-
-    await db.$transaction(async (tx) => {
-      for (const entry of previousPrices) {
-        const restorePrice = Math.round(entry.previousPrice * 100) / 100
-
-        if (entry.hadInventory) {
-          await tx.inventory.updateMany({
-            where: { productId: entry.productId, branchId },
-            data: { price: restorePrice },
-          })
-        } else {
-          // Was created by the adjustment — set price back to 0
-          await tx.inventory.updateMany({
-            where: { productId: entry.productId, branchId },
-            data: { price: 0 },
-          })
-        }
+    // Restore Product.price for each product
+    const revertUpdates: Array<{ productId: string; oldPrice: number; newPrice: number }> = []
+    for (const entry of previousPrices) {
+      const restorePrice = Math.round(entry.previousPrice * 100) / 100
+      const product = await db.product.findUnique({
+        where: { id: entry.productId },
+        select: { price: true, currency: { select: { isBase: true } } },
+      })
+      if (product) {
+        revertUpdates.push({
+          productId: entry.productId,
+          oldPrice: product.price,
+          newPrice: restorePrice,
+        })
       }
+      await db.product.update({
+        where: { id: entry.productId },
+        data: { price: restorePrice },
+      })
+    }
 
-      // Delete the adjustment record
-      await tx.priceAdjustment.delete({ where: { id: adjustmentId } })
-    })
+    // Delete the adjustment record
+    await db.priceAdjustment.delete({ where: { id: adjustmentId } })
+
+    // Update pending invoices for reverted USD products (fire-and-forget)
+    if (revertUpdates.length > 0) {
+      updatePendingInvoices(revertUpdates).catch(() => {})
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {
