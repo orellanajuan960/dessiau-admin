@@ -49,24 +49,6 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Also update Inventory.price for each selected branch
-    if (branchIds && branchIds.length > 0) {
-      for (const item of adjustments) {
-        const newPrice = Math.round(item.newPrice * 100) / 100
-        for (const branchId of branchIds) {
-          const existing = await db.inventory.findUnique({
-            where: { productId_branchId: { productId: item.productId, branchId } },
-          })
-          if (existing) {
-            await db.inventory.update({
-              where: { id: existing.id },
-              data: { price: newPrice },
-            })
-          }
-        }
-      }
-    }
-
     // Update pending invoices for USD products (fire-and-forget)
     const updates = adjustments
       .filter(a => a.previousPrice > 0 && a.newPrice > 0)

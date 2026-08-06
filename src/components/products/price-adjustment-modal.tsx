@@ -102,7 +102,7 @@ export function PriceAdjustmentModal({ open, onOpenChange, branches, mainBranchI
         const editKey = `${bid}:${p.id}`
         if (manualEdits.current.has(editKey)) continue
         const inv = p.inventories.find(i => i.branchId === bid)
-        const currentPrice = p.price // always use Product.price as base
+        const currentPrice = (inv && inv.price > 0) ? inv.price : p.price
         const newPrice = Math.round(currentPrice * (1 + pctValue / 100) * 100) / 100
         next[bid][p.id] = {
           productId: p.id,
