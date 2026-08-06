@@ -3,23 +3,34 @@ import { NextResponse } from 'next/server'
 
 /**
  * One-time fix script: reverses incorrect debt increases from old % adjustments.
- *
- * For each PriceAdjustment record (that has no previousDebts snapshot),
- * this reverses the proportional increase on ALL SaleLines and AccountReceivables
- * that were affected — bringing debts back to their original state.
- *
- * Then deletes those old PriceAdjustment records.
+ * Finds ALL PriceAdjustment records, calculates reverse ratios, and restores
+ * SaleLines, AccountReceivables, and Sale totals to their original state.
  */
 export async function POST() {
   try {
-    // 1. Find all PriceAdjustment records that lack a debt snapshot (old format)
-    const adjustments = await db.priceAdjustment.findMany({
-      where: { previousDebts: null },
-      orderBy: { createdAt: 'asc' },
-    })
+    // 1. Find all PriceAdjustment records (old ones without debt snapshot)
+    let adjustments: Array<{
+      id: string
+      percentage: number
+      previousPrices: any
+      branchId: string
+    }>
+
+    try {
+      // Try with previousDebts filter first (new schema)
+      adjustments = await db.priceAdjustment.findMany({
+        where: { previousDebts: null },
+        orderBy: { createdAt: 'asc' },
+      })
+    } catch {
+      // Column doesn't exist yet — get all records
+      adjustments = await db.priceAdjustment.findMany({
+        orderBy: { createdAt: 'asc' },
+      })
+    }
 
     if (adjustments.length === 0) {
-      return NextResponse.json({ message: 'No hay ajustes antiguos por corregir', fixed: false })
+      return NextResponse.json({ message: 'No hay ajustes por corregir', fixed: false })
     }
 
     // 2. Get base currency ID
@@ -27,7 +38,6 @@ export async function POST() {
     const baseCurrencyId = baseCurrency?.id
 
     // 3. Build a map: productId -> cumulative reverse ratio
-    //    If multiple adjustments affected the same product, ratios compound
     const productReverseRatios = new Map<string, number>()
     const allProductIds = new Set<string>()
 
@@ -70,9 +80,17 @@ export async function POST() {
     })
 
     if (saleLines.length === 0) {
+      // No debts to fix, just delete the old adjustment records
+      const adjIds = adjustments.map(a => a.id)
+      await db.priceAdjustment.deleteMany({ where: { id: { in: adjIds } } })
       return NextResponse.json({
-        message: 'No se encontraron líneas de venta con deudas pendientes para estos productos',
-        fixed: false,
+        message: 'No hay deudas pendientes para estos productos. Ajustes eliminados.',
+        fixed: true,
+        adjustmentsProcessed: adjustments.length,
+        saleLinesReversed: 0,
+        receivablesReversed: 0,
+        salesUpdated: 0,
+        adjustmentRecordsDeleted: adjustments.length,
       })
     }
 
@@ -98,17 +116,15 @@ export async function POST() {
     // 7. Reverse each sale's lines and recalculate receivables
     for (const [saleId, lines] of bySale) {
       const receivables = lines[0].sale.receivables
+      if (receivables.length === 0) continue
 
-      // Snapshot current receivable amounts before changes
+      // Snapshot current receivable amounts
       const recSnapshots = new Map(receivables.map(r => [r.id, { amount: r.amount, pendingBalance: r.pendingBalance }]))
 
       // Reverse each SaleLine
       for (const line of lines) {
         const reverseRatio = productReverseRatios.get(line.productId)
         if (!reverseRatio || reverseRatio === 1) continue
-
-        const isUsdLine = baseCurrencyId ? line.product.currencyId !== baseCurrencyId : false
-        // Reverse both Bs and USD lines for a clean reset
 
         const newUnitPrice = Math.round(line.unitPrice * reverseRatio * 100) / 100
         const newLineTotal = Math.round(line.lineTotal * reverseRatio * 100) / 100
@@ -125,11 +141,10 @@ export async function POST() {
         linesFixed++
       }
 
-      // Recalculate each receivable's pendingBalance from its sale lines
+      // Recalculate each receivable
       for (const rec of receivables) {
         const snap = recSnapshots.get(rec.id)!
 
-        // Calculate total increase that was applied, now reversed
         let totalReversed = 0
         for (const line of lines) {
           const reverseRatio = productReverseRatios.get(line.productId)
@@ -170,10 +185,9 @@ export async function POST() {
       salesFixed++
     }
 
-    // 8. Delete the old PriceAdjustment records (they've been fully reversed)
-    const deletedCount = await db.priceAdjustment.deleteMany({
-      where: { previousDebts: null },
-    })
+    // 8. Delete the old PriceAdjustment records
+    const adjIds = adjustments.map(a => a.id)
+    const deletedCount = await db.priceAdjustment.deleteMany({ where: { id: { in: adjIds } } })
 
     return NextResponse.json({
       message: 'Corrección aplicada exitosamente',
@@ -187,6 +201,6 @@ export async function POST() {
     })
   } catch (error) {
     console.error('[fix-debts] Error:', error)
-    return NextResponse.json({ error: 'Error al corregir deudas' }, { status: 500 })
+    return NextResponse.json({ error: 'Error al corregir deudas: ' + String(error) }, { status: 500 })
   }
 }
