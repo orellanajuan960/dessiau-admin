@@ -66,7 +66,7 @@ export async function POST() {
 
       recsFixed++
       details.push(
-        (client?.name || '?) + ': ' + recCode + ' ' +
+        (client?.name || '?') + ': ' + recCode + ' ' +
         rec.amount.toFixed(2) + ' -> ' + correctAmount.toFixed(2) +
         ' (pendiente: ' + rec.pendingBalance.toFixed(2) + ' -> ' + newPendingBalance.toFixed(2) + ')'
       )
