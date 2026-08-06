@@ -1,6 +1,5 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
-import { updatePendingInvoices } from '@/lib/update-pending-invoices'
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,20 +24,8 @@ export async function POST(request: NextRequest) {
     }>
 
     // Restore Product.price for each product
-    const revertUpdates: Array<{ productId: string; oldPrice: number; newPrice: number }> = []
     for (const entry of previousPrices) {
       const restorePrice = Math.round(entry.previousPrice * 100) / 100
-      const product = await db.product.findUnique({
-        where: { id: entry.productId },
-        select: { price: true, currency: { select: { isBase: true } } },
-      })
-      if (product) {
-        revertUpdates.push({
-          productId: entry.productId,
-          oldPrice: product.price,
-          newPrice: restorePrice,
-        })
-      }
       await db.product.update({
         where: { id: entry.productId },
         data: { price: restorePrice },
@@ -47,11 +34,6 @@ export async function POST(request: NextRequest) {
 
     // Delete the adjustment record
     await db.priceAdjustment.delete({ where: { id: adjustmentId } })
-
-    // Update pending invoices for reverted USD products (fire-and-forget)
-    if (revertUpdates.length > 0) {
-      updatePendingInvoices(revertUpdates).catch(() => {})
-    }
 
     return NextResponse.json({ success: true })
   } catch (error) {

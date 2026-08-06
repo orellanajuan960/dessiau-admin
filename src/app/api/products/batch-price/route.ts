@@ -1,6 +1,5 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
-import { updatePendingInvoices } from '@/lib/update-pending-invoices'
 
 interface PriceItem {
   productId: string
@@ -47,15 +46,6 @@ export async function POST(request: NextRequest) {
         where: { id: item.productId },
         data: { price: newPrice },
       })
-    }
-
-    // Update pending invoices for USD products (fire-and-forget)
-    const updates = adjustments
-      .filter(a => a.previousPrice > 0 && a.newPrice > 0)
-      .map(a => ({ productId: a.productId, oldPrice: a.previousPrice, newPrice: a.newPrice }))
-
-    if (updates.length > 0) {
-      updatePendingInvoices(updates).catch(() => {})
     }
 
     return NextResponse.json({ success: true, adjustmentId: adj.id })
