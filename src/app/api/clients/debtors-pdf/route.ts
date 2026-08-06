@@ -71,12 +71,8 @@ export async function GET() {
             l.currencyCode === recvCode || l.product?.currency?.code === recvCode
         )
 
-        if (hasMatchingLine) {
-          balanceByCurrency[recvCode] = (balanceByCurrency[recvCode] || 0) + r.pendingBalance
-        } else if (recvCode === refCode && exRate > 0) {
-          const inLocal = Math.round(r.pendingBalance * exRate * 100) / 100
-          balanceByCurrency[localCode] = (balanceByCurrency[localCode] || 0) + inLocal
-        } else if (recvCode) {
+        if (recvCode) {
+          // Always show debt in its original currency, never convert
           balanceByCurrency[recvCode] = (balanceByCurrency[recvCode] || 0) + r.pendingBalance
         } else {
           balanceByCurrency[localCode] = (balanceByCurrency[localCode] || 0) + r.pendingBalance

@@ -48,16 +48,19 @@ export async function updatePendingInvoices(updates: PendingInvoiceUpdate[]) {
 
     if (saleLines.length === 0) return
 
-    // Get currency info for matching lines to receivables
+    // Get currency info to identify base (local) currency
     const currencyIds = [...new Set(saleLines.map(l => l.product.currencyId).filter(Boolean))]
     const currencies = currencyIds.length > 0
-      ? await db.currency.findMany({ where: { id: { in: currencyIds } }, select: { id: true, code: true } })
+      ? await db.currency.findMany({ where: { id: { in: currencyIds } }, select: { id: true, code: true, isBase: true } })
       : []
     const currencyCodeMap = new Map(currencies.map(c => [c.id, c.code]))
+    const baseCurrencyId = currencies.find(c => c.isBase)?.id
 
-    // Group by saleId
+    // Group by saleId — only include lines whose product is in base currency (Bs)
     const bySale = new Map<string, typeof saleLines>()
     for (const line of saleLines) {
+      // Skip USD (non-base) product lines — only adjust Bs amounts
+      if (baseCurrencyId && line.product.currencyId !== baseCurrencyId) continue
       const list = bySale.get(line.saleId) || []
       list.push(line)
       bySale.set(line.saleId, list)
