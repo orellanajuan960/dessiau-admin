@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, Percent, Undo2, X, Search, Check } from 'lucide-react'
+import { Loader2, Percent, Undo2, X, Search, Check, DollarSign } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface BranchItem {
@@ -23,8 +23,11 @@ interface BranchItem {
 interface ProductData {
   id: string
   name: string
-  currencyCode: string
-  currencySymbol: string
+  currency: {
+    code: string
+    symbol: string
+    isBase: boolean
+  }
   inventories: Array<{
     branchId: string
     price: number
@@ -64,7 +67,6 @@ export function PriceAdjustmentModal({ open, onOpenChange, branches, mainBranchI
   const [activeTab, setActiveTab] = useState(mainBranchId)
   const [products, setProducts] = useState<ProductData[]>([])
   const [priceMap, setPriceMap] = useState<Record<string, Record<string, PriceRow>>>({})
-  // branchId -> productId -> PriceRow
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [reverting, setReverting] = useState<string | null>(null)
@@ -72,7 +74,10 @@ export function PriceAdjustmentModal({ open, onOpenChange, branches, mainBranchI
   const [saved, setSaved] = useState(false)
   const [recentAdjustments, setRecentAdjustments] = useState<RecentAdjustment[]>([])
 
-  // Fetch products when modal opens
+  // Track which prices the user manually edited (so auto-recalc doesn't overwrite)
+  const manualEdits = useRef<Set<string>>(new Set())
+
+  // Reset state when modal opens
   useEffect(() => {
     if (!open) return
     setPercentage('')
@@ -80,54 +85,94 @@ export function PriceAdjustmentModal({ open, onOpenChange, branches, mainBranchI
     setSaved(false)
     setSelectedBranchIds([mainBranchId])
     setActiveTab(mainBranchId)
+    setPriceMap({})
+    manualEdits.current = new Set()
     fetchProducts()
     fetchRecentAdjustments()
   }, [open])
 
-  // Recalculate when percentage changes
+  // Compute price rows from products + percentage — only when percentage changes
+  const recalculate = useCallback((pctValue: number) => {
+    const localProducts = products.filter(p => p.currency?.isBase !== false)
+    const next: Record<string, Record<string, PriceRow>> = {}
+    for (const bid of selectedBranchIds) {
+      next[bid] = {}
+      for (const p of localProducts) {
+        const editKey = `${bid}:${p.id}`
+        if (manualEdits.current.has(editKey)) continue
+        const inv = p.inventories.find(i => i.branchId === bid)
+        const currentPrice = inv && inv.price > 0 ? inv.price : p.price
+        const newPrice = Math.round(currentPrice * (1 + pctValue / 100) * 100) / 100
+        next[bid][p.id] = {
+          productId: p.id,
+          productName: p.name,
+          currencySymbol: p.currency?.symbol || '',
+          currentPrice,
+          newPrice,
+          hadInventory: !!(inv && inv.price > 0),
+        }
+      }
+    }
+    setPriceMap(prev => {
+      const merged: Record<string, Record<string, PriceRow>> = {}
+      // Start with manually edited prices
+      for (const bid of selectedBranchIds) {
+        merged[bid] = {}
+        if (prev[bid]) {
+          for (const pid of Object.keys(prev[bid])) {
+            const editKey = `${bid}:${pid}`
+            if (manualEdits.current.has(editKey)) {
+              merged[bid][pid] = prev[bid][pid]
+            }
+          }
+        }
+        // Overlay auto-calculated prices
+        if (next[bid]) {
+          for (const [pid, row] of Object.entries(next[bid])) {
+            merged[bid][pid] = row
+          }
+        }
+      }
+      return merged
+    })
+  }, [products, selectedBranchIds])
+
+  // When percentage changes, recalculate
   useEffect(() => {
     if (!percentage) {
+      // Clear auto-calculated but keep manual edits
       setPriceMap(prev => {
-        const next: Record<string, Record<string, PriceRow>> = {}
+        const merged: Record<string, Record<string, PriceRow>> = {}
         for (const bid of selectedBranchIds) {
-          next[bid] = prev[bid] || {}
+          merged[bid] = {}
+          if (prev[bid]) {
+            for (const pid of Object.keys(prev[bid])) {
+              const editKey = `${bid}:${pid}`
+              if (manualEdits.current.has(editKey)) {
+                merged[bid][pid] = prev[bid][pid]
+              }
+            }
+          }
         }
-        return next
+        return merged
       })
       return
     }
     const pct = parseFloat(percentage)
     if (isNaN(pct)) return
-    setPriceMap(prev => {
-      const next: Record<string, Record<string, PriceRow>> = {}
-      for (const bid of selectedBranchIds) {
-        next[bid] = {}
-        for (const p of products) {
-          const existing = prev[bid]?.[p.id]
-          // If user manually edited a price, keep it
-          if (existing && existing.newPrice !== 0) {
-            const expectedAuto = Math.round(existing.currentPrice * (1 + pct / 100) * 100) / 100
-            if (existing.newPrice !== expectedAuto) {
-              next[bid][p.id] = existing
-              continue
-            }
-          }
-          const inv = p.inventories.find(i => i.branchId === bid)
-          const currentPrice = inv && inv.price > 0 ? inv.price : p.price
-          const newPrice = Math.round(currentPrice * (1 + pct / 100) * 100) / 100
-          next[bid][p.id] = {
-            productId: p.id,
-            productName: p.name,
-            currencySymbol: p.currencySymbol,
-            currentPrice,
-            newPrice,
-            hadInventory: !!(inv && inv.price > 0),
-          }
-        }
-      }
-      return next
-    })
-  }, [percentage, selectedBranchIds, products])
+    // Clear manual edits when percentage changes (new calculation base)
+    manualEdits.current = new Set()
+    recalculate(pct)
+  }, [percentage, recalculate, selectedBranchIds])
+
+  // When products finish loading, recalculate if there's a percentage
+  useEffect(() => {
+    if (products.length === 0) return
+    if (!percentage) return
+    const pct = parseFloat(percentage)
+    if (isNaN(pct)) return
+    recalculate(pct)
+  }, [products.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchProducts = async () => {
     setLoading(true)
@@ -168,10 +213,24 @@ export function PriceAdjustmentModal({ open, onOpenChange, branches, mainBranchI
       }
       return next
     })
+    // Recalculate for the new set of branches
+    if (percentage) {
+      const pct = parseFloat(percentage)
+      if (!isNaN(pct)) {
+        // Use setTimeout to let state settle
+        setTimeout(() => recalculate(pct), 0)
+      }
+    }
   }
 
   const handlePriceChange = (branchId: string, productId: string, value: string) => {
     const num = parseFloat(value)
+    const editKey = `${branchId}:${productId}`
+    if (!isNaN(num) && num > 0) {
+      manualEdits.current.add(editKey)
+    } else {
+      manualEdits.current.delete(editKey)
+    }
     setPriceMap(prev => ({
       ...prev,
       [branchId]: {
@@ -220,6 +279,12 @@ export function PriceAdjustmentModal({ open, onOpenChange, branches, mainBranchI
         }
       }
 
+      if (adjustments.length === 0) {
+        toast.error('No hay productos para ajustar')
+        setSaving(false)
+        return
+      }
+
       const res = await fetch('/api/products/batch-price', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -266,13 +331,16 @@ export function PriceAdjustmentModal({ open, onOpenChange, branches, mainBranchI
 
   const totalByBranch = (branchId: string) => Object.values(priceMap[branchId] || {}).length
 
+  // Count USD products that are excluded
+  const usdCount = products.filter(p => p.currency?.isBase === false).length
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Ajustar Precios por Porcentaje</DialogTitle>
           <DialogDescription>
-            Ingrese el porcentaje de aumento y seleccione las sucursales a las que desea aplicar el ajuste.
+            Ingrese el porcentaje de aumento y seleccione las sucursales. Solo se ajustan productos en moneda local (Bs).
           </DialogDescription>
         </DialogHeader>
 
@@ -391,7 +459,7 @@ export function PriceAdjustmentModal({ open, onOpenChange, branches, mainBranchI
                         {getFilteredRows(bid).length === 0 && (
                           <tr>
                             <td colSpan={3} className="text-center py-8 text-muted-foreground">
-                              {search ? 'Sin resultados' : 'No hay productos'}
+                              {search ? 'Sin resultados' : 'No hay productos en moneda local (Bs)'}
                             </td>
                           </tr>
                         )}
@@ -401,6 +469,14 @@ export function PriceAdjustmentModal({ open, onOpenChange, branches, mainBranchI
                 </TabsContent>
               ))}
             </Tabs>
+          )}
+
+          {/* Info about excluded USD products */}
+          {!loading && usdCount > 0 && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <DollarSign className="h-3 w-3" />
+              <span>{usdCount} producto{usdCount !== 1 ? 's' : ''} en USD excluido{usdCount !== 1 ? 's' : ''} del ajuste</span>
+            </div>
           )}
 
           {/* Recent adjustments with revert */}

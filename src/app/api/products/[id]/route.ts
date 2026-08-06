@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client'
 import { requireAuth } from '@/lib/require-auth'
 import { getPermissions } from '@/lib/permissions'
 import { logStockChange } from '@/lib/stock-history'
+import { updatePendingInvoices } from '@/lib/update-pending-invoices'
 
 export async function GET(
   _request: NextRequest,
@@ -122,6 +123,14 @@ export async function PUT(
       return NextResponse.json(product)
     }
 
+    // Get previous product data for price change detection
+    const previousProduct = await db.product.findUnique({
+      where: { id },
+      select: { price: true, currencyId: true, currency: { select: { isBase: true } } },
+    })
+    const oldPrice = previousProduct?.price || 0
+    const isUsdProduct = previousProduct?.currency?.isBase === false
+
     // Build update data — keep existing currencyId if not provided
     const updateData: Record<string, unknown> = {
       name: body.name,
@@ -204,6 +213,15 @@ export async function PUT(
           })
         }
       }
+    }
+
+    // Update pending invoices if this is a USD product and price changed
+    if (isUsdProduct && body.price !== undefined && body.price > 0 && oldPrice > 0 && body.price !== oldPrice) {
+      updatePendingInvoices([{
+        productId: id,
+        oldPrice,
+        newPrice: body.price,
+      }]).catch(() => {/* non-critical */})
     }
 
     return NextResponse.json(product)
