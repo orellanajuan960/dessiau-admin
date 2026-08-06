@@ -6,19 +6,21 @@ interface PendingInvoiceUpdate {
   newPrice: number
 }
 
+interface DebtSnapshot {
+  saleLines: Array<{ id: string; unitPrice: number; lineTotal: number; lineProfit: number }>
+  receivables: Array<{ id: string; amount: number; pendingBalance: number }>
+  sales: Array<{ id: string; total: number }>
+}
+
 /**
- * When a USD product price changes (individual edit), update pending
- * invoice SaleLines and AccountReceivables for credit sales.
- *
- * Strategy (per user requirement):
- * - The price increase ratio applies proportionally to each line.
- *   e.g. product $10 -> $12 (20% up), a line with $100 total becomes $120.
- * - The receivable's pendingBalance gets the same proportional increase.
- * - If the receivable is 'parcial', the increase applies to the remaining balance.
+ * Update pending invoice SaleLines/Receivables for Bs products ONLY.
+ * Returns a snapshot of all modified records so they can be reverted later.
  *
  * Called OUTSIDE $transaction to avoid Turbopack minification bug.
  */
-export async function updatePendingInvoices(updates: PendingInvoiceUpdate[]) {
+export async function snapshotAndUpdatePendingInvoices(
+  updates: PendingInvoiceUpdate[]
+): Promise<DebtSnapshot | null> {
   try {
     const productIds = updates.map(u => u.productId)
     const priceMap = new Map(updates.map(u => [u.productId, { oldPrice: u.oldPrice, newPrice: u.newPrice }]))
@@ -46,7 +48,7 @@ export async function updatePendingInvoices(updates: PendingInvoiceUpdate[]) {
       },
     })
 
-    if (saleLines.length === 0) return
+    if (saleLines.length === 0) return null
 
     // Get currency info to identify base (local) currency
     const currencyIds = [...new Set(saleLines.map(l => l.product.currencyId).filter(Boolean))]
@@ -66,6 +68,48 @@ export async function updatePendingInvoices(updates: PendingInvoiceUpdate[]) {
       bySale.set(line.saleId, list)
     }
 
+    if (bySale.size === 0) return null
+
+    // Collect all IDs we will modify to build the snapshot
+    const affectedLineIds = new Set<string>()
+    const affectedRecIds = new Set<string>()
+    const affectedSaleIds = new Set<string>()
+    for (const [, lines] of bySale) {
+      for (const line of lines) affectedLineIds.add(line.id)
+      for (const rec of lines[0].sale.receivables) affectedRecIds.add(rec.id)
+      affectedSaleIds.add(lines[0].saleId)
+    }
+
+    // Build snapshot BEFORE any modifications
+    const snapshot: DebtSnapshot = {
+      saleLines: [],
+      receivables: [],
+      sales: [],
+    }
+
+    const existingLines = await db.saleLine.findMany({
+      where: { id: { in: [...affectedLineIds] } },
+      select: { id: true, unitPrice: true, lineTotal: true, lineProfit: true },
+    })
+    snapshot.saleLines = existingLines.map(l => ({
+      id: l.id, unitPrice: l.unitPrice, lineTotal: l.lineTotal, lineProfit: l.lineProfit,
+    }))
+
+    const existingRecs = await db.accountReceivable.findMany({
+      where: { id: { in: [...affectedRecIds] } },
+      select: { id: true, amount: true, pendingBalance: true },
+    })
+    snapshot.receivables = existingRecs.map(r => ({
+      id: r.id, amount: r.amount, pendingBalance: r.pendingBalance,
+    }))
+
+    const existingSales = await db.sale.findMany({
+      where: { id: { in: [...affectedSaleIds] } },
+      select: { id: true, total: true },
+    })
+    snapshot.sales = existingSales.map(s => ({ id: s.id, total: s.total }))
+
+    // Now apply the updates
     for (const [saleId, lines] of bySale) {
       const sale = lines[0].sale
       const receivables = sale.receivables
@@ -93,7 +137,7 @@ export async function updatePendingInvoices(updates: PendingInvoiceUpdate[]) {
         })
       }
 
-      // For each receivable, calculate increase from lines matching its currency
+      // For each receivable, calculate increase from Bs lines
       for (const rec of receivables) {
         if (rec.pendingBalance <= 0) continue
 
@@ -134,7 +178,50 @@ export async function updatePendingInvoices(updates: PendingInvoiceUpdate[]) {
         data: { total: newSaleTotal },
       })
     }
+
+    return snapshot
   } catch (_e) {
-    console.error('[updatePendingInvoices] Error:', _e)
+    console.error('[snapshotAndUpdatePendingInvoices] Error:', _e)
+    return null
+  }
+}
+
+/**
+ * Restore debts from a previously saved snapshot.
+ */
+export async function revertPendingInvoices(snapshot: DebtSnapshot) {
+  try {
+    // Restore SaleLines
+    for (const sl of snapshot.saleLines) {
+      await db.saleLine.update({
+        where: { id: sl.id },
+        data: {
+          unitPrice: sl.unitPrice,
+          lineTotal: sl.lineTotal,
+          lineProfit: sl.lineProfit,
+        },
+      })
+    }
+
+    // Restore AccountReceivables
+    for (const rec of snapshot.receivables) {
+      await db.accountReceivable.update({
+        where: { id: rec.id },
+        data: {
+          amount: rec.amount,
+          pendingBalance: rec.pendingBalance,
+        },
+      })
+    }
+
+    // Restore Sale totals
+    for (const s of snapshot.sales) {
+      await db.sale.update({
+        where: { id: s.id },
+        data: { total: s.total },
+      })
+    }
+  } catch (_e) {
+    console.error('[revertPendingInvoices] Error:', _e)
   }
 }

@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { revertPendingInvoices } from '@/lib/update-pending-invoices'
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,6 +23,11 @@ export async function POST(request: NextRequest) {
       productId: string
       previousPrice: number
     }>
+
+    // Restore debts from snapshot if available
+    if (adjustment.previousDebts) {
+      await revertPendingInvoices(adjustment.previousDebts as any)
+    }
 
     // Restore Product.price for each product
     for (const entry of previousPrices) {

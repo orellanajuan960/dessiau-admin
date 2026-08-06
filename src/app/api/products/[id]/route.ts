@@ -5,7 +5,6 @@ import { Prisma } from '@prisma/client'
 import { requireAuth } from '@/lib/require-auth'
 import { getPermissions } from '@/lib/permissions'
 import { logStockChange } from '@/lib/stock-history'
-import { updatePendingInvoices } from '@/lib/update-pending-invoices'
 
 export async function GET(
   _request: NextRequest,
@@ -215,14 +214,8 @@ export async function PUT(
       }
     }
 
-    // Update pending invoices if this is a USD product and price changed
-    if (isUsdProduct && body.price !== undefined && body.price > 0 && oldPrice > 0 && body.price !== oldPrice) {
-      updatePendingInvoices([{
-        productId: id,
-        oldPrice,
-        newPrice: body.price,
-      }]).catch(() => {/* non-critical */})
-    }
+    // Note: pending invoice debts are only updated via batch % adjustment (Bs products only)
+    // Individual product price edits do NOT modify client debts
 
     return NextResponse.json(product)
   } catch (error) {

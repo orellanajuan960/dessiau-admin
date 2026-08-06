@@ -379,6 +379,7 @@ model PriceAdjustment {
   branchId       String
   percentage     Float
   previousPrices Json
+  previousDebts  Json?
   userId         String?
   createdAt      DateTime @default(now())
 

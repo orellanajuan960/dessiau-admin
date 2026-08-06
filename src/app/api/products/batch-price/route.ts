@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { snapshotAndUpdatePendingInvoices } from '@/lib/update-pending-invoices'
 
 interface PriceItem {
   productId: string
@@ -29,12 +30,23 @@ export async function POST(request: NextRequest) {
     // Use first branchId for the adjustment record, or empty if global
     const recordBranchId = branchIds?.[0] || ''
 
-    // Create adjustment record
+    // Snapshot + update pending invoices for Bs products BEFORE creating record
+    const updates = adjustments
+      .filter(a => a.previousPrice > 0 && a.newPrice > 0)
+      .map(a => ({ productId: a.productId, oldPrice: a.previousPrice, newPrice: a.newPrice }))
+
+    let debtSnapshot = null
+    if (updates.length > 0) {
+      debtSnapshot = await snapshotAndUpdatePendingInvoices(updates)
+    }
+
+    // Create adjustment record with debt snapshot
     const adj = await db.priceAdjustment.create({
       data: {
         branchId: recordBranchId,
         percentage,
         previousPrices,
+        previousDebts: debtSnapshot || undefined,
         userId: userId || null,
       },
     })
