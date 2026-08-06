@@ -1182,6 +1182,8 @@ export function ProductsTable() {
       <PriceAdjustmentModal
         open={priceAdjOpen}
         onOpenChange={setPriceAdjOpen}
+        branches={branches}
+        mainBranchId={mainBranchId}
         onSaved={fetchData}
       />
     </div>

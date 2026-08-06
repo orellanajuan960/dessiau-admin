@@ -45,6 +45,23 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    // Also restore Inventory.price for the branch that was adjusted
+    const branchId = adjustment.branchId
+    if (branchId) {
+      for (const entry of previousPrices) {
+        const restorePrice = Math.round(entry.previousPrice * 100) / 100
+        const existing = await db.inventory.findUnique({
+          where: { productId_branchId: { productId: entry.productId, branchId } },
+        })
+        if (existing) {
+          await db.inventory.update({
+            where: { id: existing.id },
+            data: { price: restorePrice },
+          })
+        }
+      }
+    }
+
     // Delete the adjustment record
     await db.priceAdjustment.delete({ where: { id: adjustmentId } })
 

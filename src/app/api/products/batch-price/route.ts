@@ -11,9 +11,10 @@ interface PriceItem {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { percentage, adjustments, userId } = body as {
+    const { percentage, adjustments, branchIds, userId } = body as {
       percentage: number
       adjustments: PriceItem[]
+      branchIds?: string[]
       userId?: string
     }
 
@@ -26,17 +27,20 @@ export async function POST(request: NextRequest) {
       previousPrice: item.previousPrice,
     }))
 
-    // Create adjustment record for revert capability
+    // Use first branchId for the adjustment record, or empty if global
+    const recordBranchId = branchIds?.[0] || ''
+
+    // Create adjustment record
     const adj = await db.priceAdjustment.create({
       data: {
-        branchId: '', // global, not per-branch
+        branchId: recordBranchId,
         percentage,
         previousPrices,
         userId: userId || null,
       },
     })
 
-    // Update Product.price for each product
+    // Update Product.price (global sale price) for each product
     for (const item of adjustments) {
       const newPrice = Math.round(item.newPrice * 100) / 100
       await db.product.update({
@@ -45,19 +49,31 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Update pending invoices for USD products (fire-and-forget)
-    const usdUpdates = adjustments.filter(a => {
-      // We'll check currency inside updatePendingInvoices, but we can
-      // pass all and let the function filter
-      return a.previousPrice > 0 && a.newPrice > 0
-    }).map(a => ({
-      productId: a.productId,
-      oldPrice: a.previousPrice,
-      newPrice: a.newPrice,
-    }))
+    // Also update Inventory.price for each selected branch
+    if (branchIds && branchIds.length > 0) {
+      for (const item of adjustments) {
+        const newPrice = Math.round(item.newPrice * 100) / 100
+        for (const branchId of branchIds) {
+          const existing = await db.inventory.findUnique({
+            where: { productId_branchId: { productId: item.productId, branchId } },
+          })
+          if (existing) {
+            await db.inventory.update({
+              where: { id: existing.id },
+              data: { price: newPrice },
+            })
+          }
+        }
+      }
+    }
 
-    if (usdUpdates.length > 0) {
-      updatePendingInvoices(usdUpdates).catch(() => {})
+    // Update pending invoices for USD products (fire-and-forget)
+    const updates = adjustments
+      .filter(a => a.previousPrice > 0 && a.newPrice > 0)
+      .map(a => ({ productId: a.productId, oldPrice: a.previousPrice, newPrice: a.newPrice }))
+
+    if (updates.length > 0) {
+      updatePendingInvoices(updates).catch(() => {})
     }
 
     return NextResponse.json({ success: true, adjustmentId: adj.id })
