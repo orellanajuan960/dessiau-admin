@@ -41,10 +41,11 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { Plus, Search, Edit, Trash2, Package, Eye, EyeOff, Upload, ImageIcon, X, Loader2, Printer, Barcode, AlertTriangle, Ban, FileText } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Package, Eye, EyeOff, Upload, ImageIcon, X, Loader2, Printer, Barcode, AlertTriangle, Ban, FileText, Percent } from 'lucide-react'
 import { toast } from 'sonner'
 import { ProductImportDialog } from './product-import-dialog'
 import { BarcodeLabelSelector } from './barcode-label-selector'
+import { PriceAdjustmentModal } from './price-adjustment-modal'
 import { useAuth } from '@/hooks/use-auth'
 import { useCurrency } from '@/hooks/use-currency'
 import { useSetting } from '@/stores/use-app-store'
@@ -83,6 +84,7 @@ interface Currency {
 interface BranchItem {
   id: string
   name: string
+  isMain?: boolean
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -143,6 +145,8 @@ export function ProductsTable() {
   const [generatingLabel, setGeneratingLabel] = useState(false)
   const [hardDeleteDialogOpen, setHardDeleteDialogOpen] = useState(false)
   const [hardDeleteResult, setHardDeleteResult] = useState<{ dependencies: string[]; canHardDelete: boolean } | null>(null)
+  const [priceAdjOpen, setPriceAdjOpen] = useState(false)
+  const mainBranchId = branches.find(b => b.isMain)?.id || branches[0]?.id || ''
 
   const handleDownloadPdf = async () => {
     setDownloadingPdf(true)
@@ -594,6 +598,12 @@ export function ProductsTable() {
                 onClick={() => setImportOpen(true)}
               >
                 <Upload className="mr-2 h-4 w-4" /> Importar
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setPriceAdjOpen(true)}
+              >
+                <Percent className="mr-2 h-4 w-4" /> Ajustar Precios
               </Button>
             </>
           )}
@@ -1167,6 +1177,15 @@ export function ProductsTable() {
           />
         </DialogContent>
       </Dialog>
+
+      {/* Price Adjustment Modal */}
+      <PriceAdjustmentModal
+        open={priceAdjOpen}
+        onOpenChange={setPriceAdjOpen}
+        branches={branches}
+        mainBranchId={mainBranchId}
+        onSaved={fetchData}
+      />
     </div>
     </>
   )

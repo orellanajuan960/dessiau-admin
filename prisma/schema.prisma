@@ -30,6 +30,7 @@ model User {
   audits            CashAudit[]
   auditLogs         AuditLog[]
   stockHistory      StockHistory[]
+  priceAdjustments  PriceAdjustment[]
   branch            Branch?           @relation(fields: [branchId], references: [id])
 }
 
@@ -167,6 +168,7 @@ model Branch {
   expenses             Expense[]
   inventoryAdjustments InventoryAdjustment[]
   stockHistories        StockHistory[] @relation("BranchStockHistories")
+  priceAdjustments      PriceAdjustment[]
   users                User[]
 }
 
@@ -370,6 +372,20 @@ model StockHistory {
   user    User?   @relation(fields: [userId], references: [id])
 
   @@index([productId, branchId, createdAt])
+}
+
+model PriceAdjustment {
+  id             String   @id @default(cuid())
+  branchId       String
+  percentage     Float
+  previousPrices Json
+  userId         String?
+  createdAt      DateTime @default(now())
+
+  branch Branch @relation(fields: [branchId], references: [id])
+  user   User?   @relation(fields: [userId], references: [id])
+
+  @@index([branchId, createdAt])
 }
 
 model AccountReceivable {
