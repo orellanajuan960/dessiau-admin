@@ -91,7 +91,7 @@ function getIcon(iconName: string): LucideIcon {
 }
 
 export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
-  const { items, getTotal, clearCart, clientId, setClientId } = usePosStore()
+  const { items, getTotal, clearCart, clientId, setClientId, branchId } = usePosStore()
   const { user } = useAuth()
   const exchangeRate = useSetting('exchangeRate')
   const baseCurrencyId = useSetting('baseCurrencyId')
@@ -395,6 +395,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
     try {
       await api.post('/api/sales', {
         clientId: clientId || null,
+        branchId,
         cashRegId: openCashRegId,
         userId: user?.id || '',
         ivaEnabled: !!ivaEnabled,

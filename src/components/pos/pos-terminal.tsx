@@ -94,8 +94,8 @@ export function PosTerminal() {
 
   // Check if there's an open cash register (blocks cashiers) + cache the ID
   useEffect(() => {
-    if (!user?.id) return
-    api.get<Array<{ id: string; status: string }>>('/api/cash-register')
+    if (!user?.id || !selectedBranchId) return
+    api.get<Array<{ id: string; status: string }>>('/api/cash-register?branchId=' + selectedBranchId)
       .then((registers) => {
         const safeRegisters = Array.isArray(registers) ? registers : []
         const openReg = safeRegisters.find(r => r.status === 'abierta')
@@ -111,9 +111,9 @@ export function PosTerminal() {
 
   // Poll for caja status every 30s when blocked (auto-unblocks when admin opens caja)
   useEffect(() => {
-    if (cajaOpen) return
+    if (cajaOpen || !selectedBranchId) return
     const interval = setInterval(() => {
-      api.get<Array<{ id: string; status: string }>>('/api/cash-register')
+      api.get<Array<{ id: string; status: string }>>('/api/cash-register?branchId=' + selectedBranchId)
         .then((registers) => {
           const safeRegisters = Array.isArray(registers) ? registers : []
           const openReg = safeRegisters.find(r => r.status === 'abierta')
@@ -125,7 +125,7 @@ export function PosTerminal() {
         .catch(() => {})
     }, 30000)
     return () => clearInterval(interval)
-  }, [cajaOpen])
+  }, [cajaOpen, selectedBranchId])
 
   // Validate saved cart against current branch on mount
   useEffect(() => {
