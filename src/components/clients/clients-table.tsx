@@ -310,7 +310,8 @@ export function ClientsTable() {
 
   const fetchClients = async () => {
     try {
-      const params = showInactive ? '?includeDeleted=true' : ''
+      const sep = showInactive ? '&' : '?'
+      const params = (showInactive ? '?includeDeleted=true' : '') + (selectedBranchId ? sep + 'branchId=' + selectedBranchId : '')
       const data = await api.get<Client[]>(`/api/clients${params}`)
       setClients(data)
     } catch {
@@ -320,7 +321,7 @@ export function ClientsTable() {
     }
   }
 
-  useEffect(() => { fetchClients() }, [showInactive])
+  useEffect(() => { fetchClients() }, [showInactive, selectedBranchId])
 
   // React to pendingClientId from navigation (e.g. from notification click)
   const pendingClientId = useAppStore((s) => s.pendingClientId)
@@ -436,6 +437,7 @@ export function ClientsTable() {
           email: formEmail.trim() || null,
           address: formAddress.trim() || null,
           note: formNote.trim() || null,
+          branchId: selectedBranchId || undefined,
         })
         toast.success('Cliente creado')
       }

@@ -19,9 +19,13 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search') || ''
     const includeDeleted = searchParams.get('includeDeleted') === 'true'
 
+    const queryBranchId = searchParams.get('branchId')
     const where: Record<string, unknown> = {}
     if (!includeDeleted) {
       where.deletedAt = null
+    }
+    if (queryBranchId) {
+      where.branchId = queryBranchId
     }
     if (search) {
       where.OR = [
@@ -169,6 +173,8 @@ export async function POST(request: NextRequest) {
 
     const note = body.note ? body.note.trim() : null
 
+    const branchId = body.branchId || null
+
     const client = await db.client.create({
       data: {
         name,
@@ -176,6 +182,7 @@ export async function POST(request: NextRequest) {
         email,
         address,
         note,
+        branchId,
       },
     })
     await logAction({ action: 'create', entity: 'client', entityId: client.id, details: { name }, request })

@@ -207,10 +207,11 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
 
   // Load clients on mount; methods, currencies & register come from localStorage cache
   useEffect(() => {
-    api.get<ClientOption[]>('/api/clients')
+    const url = branchId ? '/api/clients?branchId=' + branchId : '/api/clients'
+    api.get<ClientOption[]>(url)
       .then((clients) => { if (Array.isArray(clients)) setClients(clients) })
       .catch(() => {})
-  }, [])
+  }, [branchId])
 
   // Set default method once from cache (only if none selected yet)
   useEffect(() => {
@@ -232,6 +233,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
         name: newClientName.trim(),
         phone: newClientPhone.trim() || undefined,
         email: newClientEmail.trim() || undefined,
+        branchId: branchId || undefined,
       })
       setClients(prev => [...prev, newClient])
       setClientId(newClient.id)

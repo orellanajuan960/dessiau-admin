@@ -41,10 +41,12 @@ model Client {
   email     String?
   address   String?
   note      String?
+  branchId  String?
   deletedAt DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
+  branch       Branch?       @relation(fields: [branchId], references: [id])
   sales        Sale[]
   receivables  AccountReceivable[]
   payments     ClientPayment[]
@@ -170,6 +172,7 @@ model Branch {
   stockHistories        StockHistory[] @relation("BranchStockHistories")
   priceAdjustments      PriceAdjustment[]
   users                User[]
+  clients              Client[]
 }
 
 model Inventory {
