@@ -106,6 +106,19 @@ export const authOptions = {
       })
     },
   },
+  useSecureCookies: process.env.NODE_ENV === 'production',
+  cookies: {
+    sessionToken: {
+      name: `${process.env.NODE_ENV === 'production' ? '__Secure-' : ''}next-auth.session-token`,
+      options: {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 8 * 60 * 60, // 8 hours — persistent cookie survives browser kill on mobile
+      },
+    },
+  },
   pages: {
     signIn: '/login',
   },
