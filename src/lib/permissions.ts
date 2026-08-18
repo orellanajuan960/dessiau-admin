@@ -115,12 +115,43 @@ const defaultRolePermissions: Record<string, UserPermissions> = {
 
 /**
  * Custom permissions override - can be set at runtime from the database.
- * This allows the admin to customize role permissions from the settings UI.
+ * On the client side, this is populated by SettingsInitializer.
+ * On the server side, this is populated by loadServerPermissions().
  */
 let customPermissions: Record<string, UserPermissions> = {}
 
+/** Whether server-side permissions have been loaded from DB */
+let serverPermissionsLoaded = false
+
 /**
- * Set custom permissions (called from settings initializer after loading from DB).
+ * Load custom permissions from DB on the server side.
+ * Called once (lazily) by getPermissions when running server-side.
+ */
+async function loadServerPermissions() {
+  if (serverPermissionsLoaded) return
+  serverPermissionsLoaded = true
+  try {
+    // Dynamic import to avoid circular dependency at module level
+    const { db } = await import('@/lib/db')
+    const settings = await db.settings.findFirst()
+    const raw = settings?.rolePermissions
+    if (raw && typeof raw === 'object' && Object.keys(raw).length > 0) {
+      for (const [role, dbPerms] of Object.entries(raw as Record<string, UserPermissions>)) {
+        const defaults = defaultRolePermissions[role]
+        if (defaults) {
+          customPermissions[role] = { ...defaults, ...dbPerms, views: dbPerms.views || defaults.views }
+        } else {
+          customPermissions[role] = dbPerms
+        }
+      }
+    }
+  } catch {
+    // If DB is unreachable, silently fall back to defaults
+  }
+}
+
+/**
+ * Set custom permissions (called from client-side SettingsInitializer after loading from DB).
  * Also triggers a Zustand state bump so components re-render with updated perms.
  */
 export function setCustomPermissions(perms: Record<string, UserPermissions>) {
@@ -142,12 +173,35 @@ export function setCustomPermissions(perms: Record<string, UserPermissions>) {
   })
 }
 
+/**
+ * Detect if we're running on the server.
+ */
+function isServer(): boolean {
+  return typeof window === 'undefined'
+}
+
+/**
+ * Synchronous version for client-side usage (uses in-memory customPermissions).
+ * Server-side callers should use getServerPermissions() instead.
+ */
 export function getPermissions(role: string): UserPermissions {
-  // First check custom permissions, then fall back to defaults
   if (customPermissions[role]) {
     return customPermissions[role]
   }
   return defaultRolePermissions[role] || defaultRolePermissions.cajero
+}
+
+/**
+ * Server-side permission check that reads custom permissions from the database.
+ * Falls back to defaults if DB is unreachable.
+ * Use this in API routes instead of getPermissions().
+ */
+export async function getServerPermissions(role: string): Promise<UserPermissions> {
+  // On server, ensure custom permissions are loaded from DB
+  if (isServer()) {
+    await loadServerPermissions()
+  }
+  return getPermissions(role)
 }
 
 export function canAccessView(role: string, view: string): boolean {

@@ -2,7 +2,7 @@ import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { logAction } from '@/lib/audit-log'
 import { requireAuth } from '@/lib/require-auth'
-import { getPermissions } from '@/lib/permissions'
+import { getServerPermissions } from '@/lib/permissions'
 
 const RIF_REGEX = /^[JVEG]-\d{8,9}-\d$/
 
@@ -45,7 +45,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const auth = await requireAuth()
   if ('status' in auth) return auth
-  const perms = getPermissions(auth.role)
+  const perms = await getServerPermissions(auth.role)
   if (!perms.canManageSuppliers) {
     return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
   }

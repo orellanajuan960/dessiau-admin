@@ -2,7 +2,7 @@ import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { logAction } from '@/lib/audit-log'
 import { requireAuth } from '@/lib/require-auth'
-import { getPermissions } from '@/lib/permissions'
+import { getServerPermissions } from '@/lib/permissions'
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
@@ -140,7 +140,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await requireAuth()
   if ('status' in auth) return auth
-  const perms = getPermissions(auth.role)
+  const perms = await getServerPermissions(auth.role)
   if (!perms.canManageClients) {
     return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
   }
@@ -195,7 +195,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   const auth = await requireAuth()
   if ('status' in auth) return auth
-  const perms = getPermissions(auth.role)
+  const perms = await getServerPermissions(auth.role)
   if (!perms.canManageClients) {
     return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
   }
@@ -269,7 +269,7 @@ export async function PUT(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const auth = await requireAuth()
   if ('status' in auth) return auth
-  const perms = getPermissions(auth.role)
+  const perms = await getServerPermissions(auth.role)
   if (!perms.canManageClients) {
     return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
   }

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { resolveBranchId } from '@/lib/resolve-branch'
 import { Prisma } from '@prisma/client'
 import { requireAuth } from '@/lib/require-auth'
-import { getPermissions } from '@/lib/permissions'
+import { getServerPermissions } from '@/lib/permissions'
 import { logStockChange } from '@/lib/stock-history'
 
 export async function GET(
@@ -45,7 +45,7 @@ export async function PUT(
 ) {
   const auth = await requireAuth()
   if ('status' in auth) return auth
-  const perms = getPermissions(auth.role)
+  const perms = await getServerPermissions(auth.role)
   if (!perms.canManageProducts) {
     return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
   }
@@ -235,7 +235,7 @@ export async function DELETE(
 ) {
   const auth = await requireAuth()
   if ('status' in auth) return auth
-  const perms = getPermissions(auth.role)
+  const perms = await getServerPermissions(auth.role)
   if (!perms.canManageProducts) {
     return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
   }
