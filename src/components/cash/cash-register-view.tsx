@@ -475,7 +475,7 @@ export function CashRegisterView() {
       // Update POS cache so payment modal picks up the new register
       const regs = await api.get<Array<{ id: string; status: string }>>('/api/cash-register').catch(() => [])
       const newOpen = (Array.isArray(regs) ? regs : []).find(r => r.status === 'abierta')
-      setCachedOpenRegId(newOpen?.id || null)
+      setCachedOpenRegId(newOpen?.id || null, targetBranch)
       setShowOpen(false)
       setRegisterName('')
       setSelectedUserId('')
@@ -564,7 +564,7 @@ export function CashRegisterView() {
       })
       toast.success('Caja cerrada exitosamente')
       // Clear POS cache — no open register anymore
-      setCachedOpenRegId(null)
+      setCachedOpenRegId(null, filterBranchId)
       setShowClose(false)
       setCloseRegId(null)
       setCloseActual('')
@@ -667,7 +667,7 @@ export function CashRegisterView() {
         branchId: filterBranchId || undefined,
       })
       toast.success(result.message)
-      setCachedOpenRegId(null)
+      setCachedOpenRegId(null, filterBranchId)
       fetchData(filterBranchId)
     } catch {
       toast.error('Error al cerrar todas las cajas')

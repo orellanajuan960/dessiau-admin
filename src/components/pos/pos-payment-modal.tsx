@@ -105,7 +105,12 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const [currencies, setCurrencies] = useState<{ id: string; code: string; symbol: string; isBase: boolean }[]>(() => getCachedCurrencies() || [])
-  const [openCashRegId, setOpenCashRegId] = useState<string | null>(() => getCachedOpenRegId())
+  const [openCashRegId, setOpenCashRegId] = useState<string | null>(() => getCachedOpenRegId(branchId))
+
+  // Sync cached cash register ID when branch changes
+  useEffect(() => {
+    setOpenCashRegId(getCachedOpenRegId(branchId))
+  }, [branchId])
   const [dbMethods, setDbMethods] = useState<PaymentMethodItem[]>(() => getCachedMethods() || [])
 
   // Hybrid payment state

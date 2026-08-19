@@ -3,14 +3,22 @@
  *
  * Populated on app startup (settings-initializer) and on POS page mount.
  * Updated whenever the user mutates payment methods, currencies, or cash registers.
+ *
+ * Cash register ID is stored PER BRANCH so each branch uses its own register.
  */
 
 const PREFIX = 'jo-pos-cache-'
 
+// Clean up legacy key (without branch suffix) on first import
+if (typeof window !== 'undefined') {
+  try { localStorage.removeItem(`${PREFIX}open-reg`) } catch { /* ignore */ }
+}
+
 const KEYS = {
   methods: `${PREFIX}methods`,
   currencies: `${PREFIX}currencies`,
-  openReg: `${PREFIX}open-reg`,
+  // openReg key is built dynamically with branchId suffix
+  openRegPrefix: `${PREFIX}open-reg-`,
 } as const
 
 // ── Types ───────────────────────────────────────────────────────────
@@ -53,9 +61,14 @@ export function getCachedCurrencies(): CachedCurrency[] | null {
   }
 }
 
-export function getCachedOpenRegId(): string | null {
+/**
+ * Get cached open cash register ID for a specific branch.
+ * Each branch stores its own register ID to prevent cross-branch contamination.
+ */
+export function getCachedOpenRegId(branchId?: string | null): string | null {
   try {
-    const raw = localStorage.getItem(KEYS.openReg)
+    const key = branchId ? `${KEYS.openRegPrefix}${branchId}` : `${KEYS.openRegPrefix}default`
+    const raw = localStorage.getItem(key)
     return raw ? JSON.parse(raw) : null
   } catch {
     return null
@@ -80,12 +93,16 @@ export function setCachedCurrencies(currencies: CachedCurrency[]) {
   }
 }
 
-export function setCachedOpenRegId(id: string | null) {
+/**
+ * Cache the open cash register ID for a specific branch.
+ */
+export function setCachedOpenRegId(id: string | null, branchId?: string | null) {
   try {
+    const key = branchId ? `${KEYS.openRegPrefix}${branchId}` : `${KEYS.openRegPrefix}default`
     if (id) {
-      localStorage.setItem(KEYS.openReg, JSON.stringify(id))
+      localStorage.setItem(key, JSON.stringify(id))
     } else {
-      localStorage.removeItem(KEYS.openReg)
+      localStorage.removeItem(key)
     }
   } catch {
     // silent
@@ -94,7 +111,15 @@ export function setCachedOpenRegId(id: string | null) {
 
 // ── Bulk helpers ────────────────────────────────────────────────────
 
-/** Clear all POS cache entries */
+/** Clear all POS cache entries (including per-branch register IDs) */
 export function clearPosCache() {
-  Object.values(KEYS).forEach((k) => localStorage.removeItem(k))
+  localStorage.removeItem(KEYS.methods)
+  localStorage.removeItem(KEYS.currencies)
+  // Remove all branch-specific register cache entries
+  const keysToRemove: string[] = []
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i)
+    if (k?.startsWith(KEYS.openRegPrefix)) keysToRemove.push(k)
+  }
+  keysToRemove.forEach((k) => localStorage.removeItem(k))
 }

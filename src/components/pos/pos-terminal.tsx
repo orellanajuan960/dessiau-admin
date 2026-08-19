@@ -99,11 +99,11 @@ export function PosTerminal() {
       .then((registers) => {
         const safeRegisters = Array.isArray(registers) ? registers : []
         const openReg = safeRegisters.find(r => r.status === 'abierta')
-        setCachedOpenRegId(openReg?.id || null)
+        setCachedOpenRegId(openReg?.id || null, selectedBranchId)
         setCajaOpen(!!openReg)
       })
       .catch(() => {
-        setCachedOpenRegId(null)
+        setCachedOpenRegId(null, selectedBranchId)
         setCajaOpen(false)
       })
       .finally(() => setCheckingCaja(false))
@@ -118,7 +118,7 @@ export function PosTerminal() {
           const safeRegisters = Array.isArray(registers) ? registers : []
           const openReg = safeRegisters.find(r => r.status === 'abierta')
           if (openReg) {
-            setCachedOpenRegId(openReg.id)
+            setCachedOpenRegId(openReg.id, selectedBranchId)
             setCajaOpen(true)
           }
         })
