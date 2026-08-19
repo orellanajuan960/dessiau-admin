@@ -70,6 +70,15 @@ export async function POST(request: NextRequest) {
     const ivaEnabled = body.ivaEnabled === true
     const ivaRate = Number(body.ivaRate) || 0
 
+    // Validate cashRegId belongs to the sale's branch
+    let effectiveCashRegId = cashRegId || null
+    if (effectiveCashRegId && branchId) {
+      const reg = await db.cashRegister.findUnique({ where: { id: effectiveCashRegId }, select: { id: true, branchId: true } })
+      if (!reg || reg.branchId !== branchId) {
+        effectiveCashRegId = null
+      }
+    }
+
     const settings = await db.settings.findFirst()
     const refCurrency = await db.currency.findFirst({ where: { code: settings?.referenceCurrency || 'USD' } })
 
@@ -169,7 +178,7 @@ export async function POST(request: NextRequest) {
       const newSale = await tx.sale.create({
         data: {
           clientId: clientId || null,
-          cashRegId: cashRegId || null,
+          cashRegId: effectiveCashRegId || null,
           userId,
           branchId,
           total,
@@ -249,14 +258,14 @@ export async function POST(request: NextRequest) {
 
       // Update cash register currentAmt for cash + non-credit payments (transfer, card, etc.)
       // Credit does NOT add to currentAmt since no money enters the register
-      if (cashRegId) {
+      if (effectiveCashRegId) {
         const nonCreditPayments = payments.filter((p: { method: string }) => !creditCodes.has(p.method))
         const nonCreditTotal = nonCreditPayments.reduce((sum: number, p: { amount: number }) => sum + p.amount, 0)
         if (nonCreditTotal > 0) {
-          const reg = await tx.cashRegister.findUnique({ where: { id: cashRegId } })
+          const reg = await tx.cashRegister.findUnique({ where: { id: effectiveCashRegId } })
           if (reg) {
             await tx.cashRegister.update({
-              where: { id: cashRegId },
+              where: { id: effectiveCashRegId },
               data: { currentAmt: Math.round((reg.currentAmt + nonCreditTotal) * 100) / 100 },
             })
           }
