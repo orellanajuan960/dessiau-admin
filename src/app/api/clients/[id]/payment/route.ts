@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { formatCurrency } from '@/lib/currency'
+import { getBranchForCashier } from '@/lib/resolve-branch'
 
 interface AppliedDetail {
   receivableId: string
@@ -24,6 +25,18 @@ export async function POST(
 
     if (!userId) {
       return NextResponse.json({ error: 'userId es requerido' }, { status: 400 })
+    }
+
+    // For cashiers, validate cashRegId belongs to their assigned branch
+    let effectiveCashRegId = cashRegId || null
+    if (effectiveCashRegId && userId) {
+      const cashierBranch = await getBranchForCashier(userId)
+      if (cashierBranch) {
+        const reg = await db.cashRegister.findUnique({ where: { id: effectiveCashRegId }, select: { id: true, branchId: true } })
+        if (!reg || reg.branchId !== cashierBranch) {
+          effectiveCashRegId = null
+        }
+      }
     }
 
     // Get pending receivables with their currency
@@ -173,7 +186,7 @@ export async function POST(
       }
 
       // Create cash movement
-      if (cashRegId) {
+      if (effectiveCashRegId) {
         const displayAmt = displayAmount
         let movCurrencyId = currencyId
         if (displayCurrencyCode) {
@@ -183,7 +196,7 @@ export async function POST(
         if (movCurrencyId) {
           const movement = await tx.cashMovement.create({
             data: {
-              cashRegId,
+              cashRegId: effectiveCashRegId,
               userId,
               type: 'entrada',
               amount: Math.round(displayAmt * 100) / 100,
@@ -194,7 +207,7 @@ export async function POST(
           })
 
           // Update cash register current amount — convert to base currency if needed
-          const reg = await tx.cashRegister.findUnique({ where: { id: cashRegId } })
+          const reg = await tx.cashRegister.findUnique({ where: { id: effectiveCashRegId } })
           if (reg) {
             let amtForRegister = displayAmt
             if (displayCurrencyCode) {
@@ -204,7 +217,7 @@ export async function POST(
               }
             }
             await tx.cashRegister.update({
-              where: { id: cashRegId },
+              where: { id: effectiveCashRegId },
               data: { currentAmt: Math.round((reg.currentAmt + amtForRegister) * 100) / 100 },
             })
           }
@@ -225,7 +238,7 @@ export async function POST(
           amount: Math.round(displayAmount * 100) / 100,
           method,
           reference: reference || null,
-          cashRegId: cashRegId || null,
+          cashRegId: effectiveCashRegId || null,
           currencyId: effectiveCurrencyId,
           appliedDetails: JSON.stringify(updated),
         },

@@ -338,7 +338,8 @@ export function ClientsTable() {
 
   // Fetch open cash register and payment methods
   useEffect(() => {
-    api.get<Array<{ id: string; status: string }>>('/api/cash-register')
+    const branchParam = selectedBranchId ? `?branchId=${selectedBranchId}` : ''
+    api.get<Array<{ id: string; status: string }>>(`/api/cash-register${branchParam}`)
       .then(regs => {
         const openReg = regs?.find(r => r.status === 'abierta')
         if (openReg) setOpenCashRegId(openReg.id)
@@ -355,7 +356,7 @@ export function ClientsTable() {
       .catch(() => {
         setPaymentMethods(FALLBACK_METHODS.filter(m => m.enabled && !m.isCredit))
       })
-  }, [country])
+  }, [country, selectedBranchId])
 
   const inactiveCount = clients.filter((c) => c.deletedAt !== null).length
 

@@ -52,8 +52,8 @@ export function AppHeader() {
 
   // Cashier role check
   const isCashier = user?.role === 'cajero'
-  // From JWT session, the branchId might be set
-  const userBranchId = (user as Record<string, unknown>)?.branchId as string | undefined
+  // Cashier's assigned branch from JWT/session
+  const userBranchId = user?.branchId || null
 
   // Fetch branches on mount
   useEffect(() => {
@@ -68,7 +68,7 @@ export function AppHeader() {
             if (firstActive) setSelectedBranchId(firstActive.id)
           }
         } else {
-          // For cashiers, force their assigned branch
+          // For cashiers, ALWAYS force their assigned branch from DB/JWT
           if (userBranchId) {
             setSelectedBranchId(userBranchId)
           } else if (data.length > 0) {
@@ -81,20 +81,27 @@ export function AppHeader() {
       .finally(() => setLoading(false))
   }, [])
 
-  // For cashiers, fetch their assigned cash register info
+  // For cashiers, ALWAYS override selectedBranchId if it doesn't match assigned branch
   useEffect(() => {
-    if (!isCashier || !user?.id) return
-    api.get<Array<{ id: string; status: string; name: string | null; branch: { name: string } }>>('/api/cash-register')
+    if (!isCashier || !userBranchId) return
+    const current = useAppStore.getState().selectedBranchId
+    if (current && current !== userBranchId) {
+      setSelectedBranchId(userBranchId)
+    }
+  }, [isCashier, userBranchId])
+
+  // For cashiers, fetch their assigned cash register info (filtered by THEIR branch)
+  useEffect(() => {
+    if (!isCashier || !user?.id || !selectedBranchId) return
+    api.get<Array<{ id: string; status: string; name: string | null; branch: { name: string }; user?: { id: string } }>>(`/api/cash-register?branchId=${selectedBranchId}`)
       .then((regs) => {
         const openReg = regs?.find(r => r.status === 'abierta' && r.user?.id === user.id)
-        // We can't easily filter by userId here, so just get any open register
-        // The API already filters by branch
         if (openReg) {
           setCashRegisterInfo({ name: openReg.name, branchName: openReg.branch?.name || '' })
         }
       })
       .catch(() => {})
-  }, [isCashier, user?.id])
+  }, [isCashier, user?.id, selectedBranchId])
 
   // For cashiers, poll for register closure every 60 seconds
   useEffect(() => {

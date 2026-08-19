@@ -42,3 +42,23 @@ export function branchFromBody(body: Record<string, unknown>): string | null {
   if (body.branchId && typeof body.branchId === 'string') return body.branchId
   return null
 }
+
+/**
+ * For cashier users, resolve the branchId from the user's DB record.
+ * This ensures cashiers always use their ASSIGNED branch, regardless of
+ * what the client sends. Returns null if the user is not a cashier or not found.
+ */
+export async function getBranchForCashier(userId: string): Promise<string | null> {
+  try {
+    const user = await db.user.findUnique({
+      where: { id: userId },
+      select: { role: true, branchId: true },
+    })
+    if (user?.role === 'cajero' && user.branchId) {
+      return user.branchId
+    }
+  } catch {
+    // DB error — fall through
+  }
+  return null
+}

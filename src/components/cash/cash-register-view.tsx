@@ -473,7 +473,7 @@ export function CashRegisterView() {
       })
       toast.success('Caja abierta exitosamente')
       // Update POS cache so payment modal picks up the new register
-      const regs = await api.get<Array<{ id: string; status: string }>>('/api/cash-register').catch(() => [])
+      const regs = await api.get<Array<{ id: string; status: string }>>(`/api/cash-register?branchId=${targetBranch}`).catch(() => [])
       const newOpen = (Array.isArray(regs) ? regs : []).find(r => r.status === 'abierta')
       setCachedOpenRegId(newOpen?.id || null, targetBranch)
       setShowOpen(false)

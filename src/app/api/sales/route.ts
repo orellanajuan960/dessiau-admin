@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
-import { resolveBranchId, branchFromBody } from '@/lib/resolve-branch'
+import { resolveBranchId, branchFromBody, getBranchForCashier } from '@/lib/resolve-branch'
 import { getPaymentMethodsFromDB, FALLBACK_METHODS } from '@/lib/payment-methods'
 import { convertToRefCurrency } from '@/lib/currency-conversion'
 import { getCurrencyForCountry } from '@/lib/country-currency'
@@ -66,7 +66,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Debe incluir al menos una línea de venta' }, { status: 400 })
     }
 
-    const branchId = branchFromBody(body) || await resolveBranchId()
+    // For cashiers, ALWAYS use their DB-assigned branch (defense-in-depth)
+    const cashierBranch = await getBranchForCashier(userId)
+    const branchId = cashierBranch || branchFromBody(body) || await resolveBranchId()
     const ivaEnabled = body.ivaEnabled === true
     const ivaRate = Number(body.ivaRate) || 0
 

@@ -10,6 +10,7 @@ interface AuthUser {
   name: string
   email: string
   role: string
+  branchId: string | null
 }
 
 export function useAuth() {
@@ -27,6 +28,7 @@ export function useAuth() {
       name: session.user.name || '',
       email: session.user.email || '',
       role: (session.user as Record<string, unknown>).role as string || 'cajero',
+      branchId: (session.user as Record<string, unknown>).branchId as string | null || null,
     }
   }, [session])
 
