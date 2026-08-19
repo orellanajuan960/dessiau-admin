@@ -3,13 +3,14 @@ import { NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/require-auth'
 
 /**
- * Cleanup script: deletes data created by a specific user, optionally filtered by branch.
+ * Cleanup script: deletes data filtered by user, branch, and/or cash register.
  *
  * Usage:
  *   GET /api/clean-cashier-data?email=cajero2@correo.com
  *   GET /api/clean-cashier-data?name=Cajero 2
- *   GET /api/clean-cashier-data?email=cajero2@correo.com&branchId=abc123
  *   GET /api/clean-cashier-data?branchId=abc123
+ *   GET /api/clean-cashier-data?cashRegId=xyz789
+ *   GET /api/clean-cashier-data?email=cajero2@correo.com&branchId=abc123&cashRegId=xyz789
  */
 export async function GET(request: Request) {
   const auth = await requireAdmin()
@@ -19,11 +20,12 @@ export async function GET(request: Request) {
   const email = searchParams.get('email')
   const name = searchParams.get('name')
   const branchId = searchParams.get('branchId')
+  const cashRegId = searchParams.get('cashRegId')
 
-  if (!email && !name && !branchId) {
+  if (!email && !name && !branchId && !cashRegId) {
     return NextResponse.json({
-      error: 'Especifica ?email=correo, ?name=nombre y/o ?branchId=idSucursal',
-      example: '/api/clean-cashier-data?email=cajero2@correo.com&branchId=abc123',
+      error: 'Especifica al menos un filtro: ?email=, ?name=, ?branchId= o ?cashRegId=',
+      example: '/api/clean-cashier-data?cashRegId=xyz789',
     }, { status: 400 })
   }
 
@@ -42,16 +44,39 @@ export async function GET(request: Request) {
     const uid = user?.id
     const results: Record<string, number> = {}
 
-    // Build branch-aware where clauses
+    // If cashRegId is given, validate it exists
+    if (cashRegId) {
+      const cr = await db.cashRegister.findUnique({ where: { id: cashRegId }, select: { id: true, name: true, branchId: true } })
+      if (!cr) {
+        return NextResponse.json({ error: `No se encontro caja registradora con id: ${cashRegId}` }, { status: 404 })
+      }
+      // Auto-derive branchId from the cash register if not explicitly provided
+      if (!branchId && cr.branchId) {
+        // Use it internally for filtering sales/expenses
+      }
+    }
+
+    // ── Build where clauses ──
+
+    // Sales: filter by userId, branchId, and/or cashRegId
     const saleWhere: Record<string, unknown> = {}
     if (uid) saleWhere.userId = uid
     if (branchId) saleWhere.branchId = branchId
+    if (cashRegId) saleWhere.cashRegId = cashRegId
 
+    // CashRegisters: filter by userId and/or branchId
     const cashRegWhere: Record<string, unknown> = {}
     if (uid) cashRegWhere.userId = uid
     if (branchId) cashRegWhere.branchId = branchId
+    if (cashRegId) cashRegWhere.id = cashRegId
 
-    // 1. Find sales
+    // Helper: get cash register IDs for a branch (used for movements/audits)
+    async function getBranchRegIds(bid: string): Promise<string[]> {
+      const regs = await db.cashRegister.findMany({ where: { branchId: bid }, select: { id: true } })
+      return regs.map(r => r.id)
+    }
+
+    // 1. Find sales matching filters
     const saleIds = await db.sale.findMany({
       where: saleWhere,
       select: { id: true },
@@ -59,18 +84,15 @@ export async function GET(request: Request) {
     const saleIdList = saleIds.map(s => s.id)
 
     if (saleIdList.length > 0) {
-      // 2. ClientPayments by this user (or linked to these sales' cash registers)
+      // 2. ClientPayments: by user or linked to cash registers from these sales
       const cpWhere: Record<string, unknown> = {}
       if (uid) cpWhere.userId = uid
-      if (saleIdList.length > 0) {
-        // Also delete client payments linked to cash registers from these sales
-        const crIdsFromSales = await db.sale.findMany({
-          where: { id: { in: saleIdList }, cashRegId: { not: null } },
-          select: { cashRegId: true },
-        }).then(s => [...new Set(s.map(x => x.cashRegId!))])
-        if (crIdsFromSales.length > 0 && !uid) {
-          cpWhere.cashRegId = { in: crIdsFromSales }
-        }
+      if (cashRegId) {
+        cpWhere.cashRegId = cashRegId
+      } else if (branchId) {
+        const bRegIds = await getBranchRegIds(branchId)
+        if (bRegIds.length > 0) cpWhere.cashRegId = { in: bRegIds }
+        else cpWhere.cashRegId = '___none___'
       }
       if (Object.keys(cpWhere).length > 0) {
         const cpDel = await db.clientPayment.deleteMany({ where: cpWhere })
@@ -83,13 +105,13 @@ export async function GET(request: Request) {
       })
       results.accountReceivables = arDel.count
 
-      // 4. SalePayments from these sales
+      // 4. SalePayments
       const spDel = await db.salePayment.deleteMany({
         where: { saleId: { in: saleIdList } },
       })
       results.salePayments = spDel.count
 
-      // 5. SaleLines from these sales
+      // 5. SaleLines
       const slDel = await db.saleLine.deleteMany({
         where: { saleId: { in: saleIdList } },
       })
@@ -103,12 +125,12 @@ export async function GET(request: Request) {
     // 7. CashMovements
     const cmWhere: Record<string, unknown> = {}
     if (uid) cmWhere.userId = uid
-    if (branchId) {
-      const cmRegIds = await db.cashRegister.findMany({
-        where: { branchId }, select: { id: true },
-      })
-      if (cmRegIds.length > 0) cmWhere.cashRegId = { in: cmRegIds.map(r => r.id) }
-      else cmWhere.cashRegId = '___none___' // force 0 deletes if no registers
+    if (cashRegId) {
+      cmWhere.cashRegId = cashRegId
+    } else if (branchId) {
+      const ids = await getBranchRegIds(branchId)
+      if (ids.length > 0) cmWhere.cashRegId = { in: ids }
+      else cmWhere.cashRegId = '___none___'
     }
     if (Object.keys(cmWhere).length > 0) {
       const cmDel = await db.cashMovement.deleteMany({ where: cmWhere })
@@ -118,11 +140,11 @@ export async function GET(request: Request) {
     // 8. CashAudits
     const caWhere: Record<string, unknown> = {}
     if (uid) caWhere.userId = uid
-    if (branchId) {
-      const caRegIds = await db.cashRegister.findMany({
-        where: { branchId }, select: { id: true },
-      })
-      if (caRegIds.length > 0) caWhere.cashRegId = { in: caRegIds.map(r => r.id) }
+    if (cashRegId) {
+      caWhere.cashRegId = cashRegId
+    } else if (branchId) {
+      const ids = await getBranchRegIds(branchId)
+      if (ids.length > 0) caWhere.cashRegId = { in: ids }
       else caWhere.cashRegId = '___none___'
     }
     if (Object.keys(caWhere).length > 0) {
@@ -148,10 +170,8 @@ export async function GET(request: Request) {
     results.cashRegisters = crDel.count
 
     // 10. SupplierPayments
-    const supWhere: Record<string, unknown> = {}
-    if (uid) supWhere.userId = uid
-    if (Object.keys(supWhere).length > 0) {
-      const supPayDel = await db.supplierPayment.deleteMany({ where: supWhere })
+    if (uid) {
+      const supPayDel = await db.supplierPayment.deleteMany({ where: { userId: uid } })
       results.supplierPayments = supPayDel.count
     }
 
@@ -211,11 +231,16 @@ export async function GET(request: Request) {
       const branch = await db.branch.findUnique({ where: { id: branchId }, select: { name: true } })
       filterDesc.push(`sucursal: ${branch?.name || branchId}`)
     }
+    if (cashRegId) {
+      const cr = await db.cashRegister.findUnique({ where: { id: cashRegId }, select: { name: true } })
+      filterDesc.push(`caja: ${cr?.name || cashRegId}`)
+    }
 
     return NextResponse.json({
       success: true,
       ...(user ? { user: { id: user.id, name: user.name, email: user.email, role: user.role } } : {}),
       ...(branchId ? { branchId } : {}),
+      ...(cashRegId ? { cashRegId } : {}),
       deleted: results,
       totalDeleted,
       message: `Se eliminaron ${totalDeleted} registros (${filterDesc.join(', ')})`,
