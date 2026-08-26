@@ -409,8 +409,8 @@ export function FinancialDashboard() {
                   <XAxis
                     dataKey="label"
                     className="text-xs"
-                    interval={dailySales.days.length > 15 ? 2 : 0}
-                    tick={{ fontSize: 11 }}
+                    interval={Math.max(0, Math.ceil(dailySales.days.length / 20) - 1)}
+                    tick={{ fontSize: 10 }}
                   />
                   <YAxis className="text-xs" />
                   <Tooltip
@@ -426,8 +426,8 @@ export function FinancialDashboard() {
                   <Bar
                     dataKey="total"
                     fill="var(--primary)"
-                    radius={[4, 4, 0, 0]}
-                    maxBarSize={dailySales.days.length > 20 ? 12 : 24}
+                    radius={[2, 2, 0, 0]}
+                    maxBarSize={dailySales.days.length > 31 ? 8 : dailySales.days.length > 15 ? 14 : 24}
                   />
                 </BarChart>
               </ResponsiveContainer>

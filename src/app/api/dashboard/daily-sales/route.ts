@@ -75,13 +75,9 @@ export async function GET(request: NextRequest) {
       rangeLabel = `${monthName.charAt(0).toUpperCase() + monthName.slice(1)} ${year}`
     }
 
-    // Calculate total days in range
+    // Calculate total days in range (always one bar per day)
     const totalDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
-
-    // Decide grouping: daily for <=60 days, weekly for 61-180, monthly for >180
-    let groupBy = 1
-    if (totalDays > 180) groupBy = 30
-    else if (totalDays > 60) groupBy = 7
+    const spansMultipleMonths = startDate.getMonth() !== endDate.getMonth() || startDate.getFullYear() !== endDate.getFullYear()
 
     // Fetch all completed sales in the range
     const sales = await db.sale.findMany({
@@ -89,13 +85,12 @@ export async function GET(request: NextRequest) {
       include: { payments: true },
     })
 
-    // Build grouped data
+    // Build daily data — one entry per day
     const data: Array<{ day: number; label: string; total: number; count: number }> = []
 
-    for (let i = 0; i < totalDays; i += groupBy) {
+    for (let i = 0; i < totalDays; i++) {
       const dStart = new Date(startDate.getTime() + i * 24 * 3600 * 1000)
-      const dEnd = new Date(startDate.getTime() + (i + groupBy) * 24 * 3600 * 1000)
-      if (dEnd > endDate) dEnd.setTime(endDate.getTime() + 1)
+      const dEnd = new Date(startDate.getTime() + (i + 1) * 24 * 3600 * 1000)
 
       let total = 0
       let count = 0
@@ -107,14 +102,10 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      let label: string
-      if (groupBy === 30) {
-        label = dStart.toLocaleDateString('es-VE', { month: 'short' })
-      } else if (groupBy === 7) {
-        label = `${dStart.getDate()}/${dStart.getMonth() + 1}`
-      } else {
-        label = `${dStart.getDate()}`
-      }
+      // If range spans multiple months, show day/month; otherwise just the day number
+      const label = spansMultipleMonths
+        ? `${dStart.getDate()}/${dStart.getMonth() + 1}`
+        : `${dStart.getDate()}`
 
       data.push({
         day: i + 1,
