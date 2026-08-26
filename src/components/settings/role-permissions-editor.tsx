@@ -13,7 +13,7 @@ import { ALL_ROLES, getRoleLabel, type UserPermissions } from '@/lib/permissions
 const DEFAULT_PERMISSIONS: Record<string, UserPermissions> = {
   admin: {
     role: 'admin',
-    views: ['pos', 'dashboard', 'products', 'clients', 'suppliers', 'cash', 'expenses', 'settings'],
+    views: ['pos', 'dashboard', 'products', 'clients', 'suppliers', 'cash', 'expenses', 'reports', 'settings'],
     canManageUsers: true,
     canAccessSettings: true,
     canManageProducts: true,
@@ -35,7 +35,7 @@ const DEFAULT_PERMISSIONS: Record<string, UserPermissions> = {
   },
   gerente: {
     role: 'gerente',
-    views: ['pos', 'dashboard', 'products', 'clients', 'suppliers', 'cash', 'expenses'],
+    views: ['pos', 'dashboard', 'products', 'clients', 'suppliers', 'cash', 'expenses', 'reports'],
     canManageUsers: false,
     canAccessSettings: true,
     canManageProducts: true,
@@ -119,6 +119,7 @@ const VIEW_ROWS: PermRow[] = [
   { id: 'view-suppliers', label: 'Proveedores', description: 'Ver la lista de proveedores', icon: '🏭', type: 'view', key: 'suppliers' },
   { id: 'view-cash', label: 'Caja', description: 'Acceder al registro de caja', icon: '💰', type: 'view', key: 'cash' },
   { id: 'view-expenses', label: 'Gastos', description: 'Ver y registrar gastos', icon: '💸', type: 'view', key: 'expenses' },
+  { id: 'view-reports', label: 'Reportes', description: 'Ver reportes de productos y ventas', icon: '📄', type: 'view', key: 'reports' },
   { id: 'view-settings', label: 'Configuración', description: 'Acceder a la configuración del sistema', icon: '⚙', type: 'view', key: 'settings' },
 ]
 

@@ -54,11 +54,9 @@ interface DashboardData {
 }
 
 interface DailySalesData {
-  year: number
-  month: number
-  monthLabel: string
+  rangeLabel: string
   days: Array<{ day: number; label: string; total: number; count: number }>
-  totalMonth: number
+  totalRange: number
   totalCount: number
 }
 
@@ -159,14 +157,45 @@ export function FinancialDashboard() {
       .finally(() => setLoading(false))
   }, [selectedBranchId, period, customFrom, customTo, isCustomValid])
 
-  // Fetch daily sales for the current month (always)
+  // Fetch daily sales filtered by the selected period
   useEffect(() => {
+    if (period === 'custom' && !isCustomValid) return
+
     const params = new URLSearchParams()
     if (selectedBranchId) params.set('branchId', selectedBranchId)
+
+    if (period === 'custom' && customFrom && customTo) {
+      params.set('from', customFrom)
+      params.set('to', customTo)
+    } else {
+      const now = new Date()
+      let from: Date
+      let to: Date
+      if (period === 'today') {
+        from = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+        to = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      } else if (period === 'week') {
+        to = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+        from = new Date(to)
+        from.setDate(from.getDate() - 6)
+      } else if (period === 'month') {
+        from = new Date(now.getFullYear(), now.getMonth(), 1)
+        to = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+      } else if (period === 'year') {
+        from = new Date(now.getFullYear(), 0, 1)
+        to = new Date(now.getFullYear(), 11, 31)
+      } else {
+        from = new Date(now.getFullYear(), now.getMonth(), 1)
+        to = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+      }
+      params.set('from', from.toISOString().split('T')[0])
+      params.set('to', to.toISOString().split('T')[0])
+    }
+
     api.get<DailySalesData>(`/api/dashboard/daily-sales?${params.toString()}`)
       .then(setDailySales)
       .catch(() => {})
-  }, [selectedBranchId])
+  }, [selectedBranchId, period, customFrom, customTo, isCustomValid])
 
   const totalProducts = data?.totalActiveProducts || 0
   const totalClients = data?.clientesPeriodo || 0
@@ -296,7 +325,7 @@ export function FinancialDashboard() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Sales Chart */}
+        {/* Sales Trend Chart */}
         <Card className="lg:col-span-2">
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Tendencia de Ventas ({data.chartLabel})</CardTitle>
@@ -332,54 +361,7 @@ export function FinancialDashboard() {
           </CardContent>
         </Card>
 
-        {/* Daily Sales Bar Chart */}
-        {dailySales && (
-          <Card className="lg:col-span-3">
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base">Ventas por Día ({dailySales.monthLabel} {dailySales.year})</CardTitle>
-                <div className="text-right">
-                  <p className="text-lg font-bold text-primary">{fmtBase(dailySales.totalMonth)}</p>
-                  <p className="text-xs text-muted-foreground">{dailySales.totalCount} ventas</p>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={dailySales.days}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                    <XAxis
-                      dataKey="label"
-                      className="text-xs"
-                      interval={dailySales.days.length > 15 ? 2 : 0}
-                      tick={{ fontSize: 11 }}
-                    />
-                    <YAxis className="text-xs" />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: 'var(--card)',
-                        border: '1px solid var(--border)',
-                        borderRadius: '8px',
-                        fontSize: '12px',
-                      }}
-                      formatter={(value: number) => [fmtBase(value), 'Ventas']}
-                      labelFormatter={(label: string) => `Día ${label}`}
-                    />
-                    <Bar
-                      dataKey="total"
-                      fill="var(--primary)"
-                      radius={[4, 4, 0, 0]}
-                      maxBarSize={dailySales.days.length > 20 ? 12 : 24}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Top Products */}
+        {/* Top 5 Products - beside trend chart */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Top 5 Productos</CardTitle>
@@ -406,6 +388,53 @@ export function FinancialDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Daily Sales Bar Chart - full width below */}
+      {dailySales && (
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base">Ventas por Día ({dailySales.rangeLabel})</CardTitle>
+              <div className="text-right">
+                <p className="text-lg font-bold text-primary">{fmtBase(dailySales.totalRange)}</p>
+                <p className="text-xs text-muted-foreground">{dailySales.totalCount} ventas</p>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={dailySales.days}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <XAxis
+                    dataKey="label"
+                    className="text-xs"
+                    interval={dailySales.days.length > 15 ? 2 : 0}
+                    tick={{ fontSize: 11 }}
+                  />
+                  <YAxis className="text-xs" />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: 'var(--card)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                    }}
+                    formatter={(value: number) => [fmtBase(value), 'Ventas']}
+                    labelFormatter={(label: string) => `Día ${label}`}
+                  />
+                  <Bar
+                    dataKey="total"
+                    fill="var(--primary)"
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={dailySales.days.length > 20 ? 12 : 24}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Recent Sales */}
