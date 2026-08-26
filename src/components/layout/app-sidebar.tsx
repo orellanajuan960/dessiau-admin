@@ -11,6 +11,7 @@ import {
   Receipt,
   Settings,
   Store,
+  FileBarChart,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -38,6 +39,7 @@ const navItems: { view: AppView; label: string; icon: React.ElementType }[] = [
   { view: 'suppliers', label: 'Proveedores', icon: Building2 },
   { view: 'cash', label: 'Caja', icon: Wallet },
   { view: 'expenses', label: 'Gastos', icon: Receipt },
+  { view: 'reports', label: 'Reportes', icon: FileBarChart },
 ]
 
 export function AppSidebar() {

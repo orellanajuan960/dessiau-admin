@@ -12,6 +12,7 @@ import { ClientsTable } from '@/components/clients/clients-table'
 import { SuppliersView } from '@/components/clients/suppliers-view'
 import { CashRegisterView } from '@/components/cash/cash-register-view'
 import { ExpensesTable } from '@/components/expenses/expenses-table'
+import { ProductReport } from '@/components/reports/product-report'
 import { SettingsView } from '@/components/settings/settings-view'
 import { OnboardingTutorial } from '@/components/tutorial/onboarding-tutorial'
 import { SettingsInitializer } from '@/components/settings/settings-initializer'
@@ -27,6 +28,7 @@ const viewComponents: Record<AppView, React.ComponentType> = {
   suppliers: SuppliersView,
   cash: CashRegisterView,
   expenses: ExpensesTable,
+  reports: ProductReport,
   settings: SettingsView,
 }
 

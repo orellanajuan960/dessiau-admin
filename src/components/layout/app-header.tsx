@@ -40,6 +40,7 @@ const viewLabels: Record<string, string> = {
   suppliers: 'Proveedores',
   cash: 'Caja',
   expenses: 'Gastos',
+  reports: 'Reportes',
   settings: 'Configuración',
 }
 
