@@ -60,6 +60,13 @@ interface PaymentMethodOption {
   isCredit: boolean
 }
 
+interface PaymentEntry {
+  tempId: string
+  method: string
+  amount: string
+  reference: string
+}
+
 interface Client {
   id: string
   name: string
@@ -163,10 +170,53 @@ export function ClientsTable() {
   const country = useSetting('country') || 'VE'
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([])
 
+  // Hybrid payment state
+  const [paymentEntries, setPaymentEntries] = useState<PaymentEntry[]>([])
+  const isHybrid = paymentMethod === 'hibrido'
+
   const referenceCurrency = useSetting('referenceCurrency')
   const { sym: currencySymbol, baseSym, baseCode, rate: exchangeRate, fmt, fmtWith } = useCurrency()
-  const selectedPm = paymentMethods.find(m => m.code === paymentMethod)
+  const selectedPm = !isHybrid ? paymentMethods.find(m => m.code === paymentMethod) : null
   const isLocalMethod = selectedPm?.isLocalCurrency ?? false
+
+  // Hybrid helpers
+  const getEntryLocal = (entry: PaymentEntry) => {
+    const pm = paymentMethods.find(m => m.code === entry.method)
+    return pm?.isLocalCurrency ?? false
+  }
+  const entryToRef = (entry: PaymentEntry): number => {
+    const amt = parseFloat(entry.amount) || 0
+    if (getEntryLocal(entry) && exchangeRate > 0) return amt / exchangeRate
+    return amt
+  }
+  const refToEntryStr = (refAmt: number, isLocal: boolean): string => {
+    if (isLocal && exchangeRate > 0) return (refAmt * exchangeRate).toFixed(2)
+    return refAmt.toFixed(2)
+  }
+  const hybridTotalInRef = paymentEntries.reduce((s, e) => s + entryToRef(e), 0)
+  const hybridRemaining = (paymentClient?.pendingBalance || 0) - hybridTotalInRef
+
+  const addPaymentEntry = () => {
+    const usedMethods = new Set(paymentEntries.map(e => e.method))
+    const next = paymentMethods.find(m => !usedMethods.has(m.code)) || paymentMethods[0]
+    if (!next) return
+    const isLocal = next.isLocalCurrency
+    const remaining = Math.max(0, hybridRemaining)
+    setPaymentEntries(prev => [...prev, {
+      tempId: crypto.randomUUID(),
+      method: next.code,
+      amount: refToEntryStr(remaining, isLocal),
+      reference: '',
+    }])
+  }
+  const removePaymentEntry = (tempId: string) => setPaymentEntries(prev => prev.filter(e => e.tempId !== tempId))
+  const updatePaymentEntry = (tempId: string, field: 'method' | 'amount' | 'reference', value: string) => {
+    setPaymentEntries(prev => prev.map(e => {
+      if (e.tempId !== tempId) return e
+      if (field === 'method') return { ...e, method: value, reference: '' }
+      return { ...e, [field]: value }
+    }))
+  }
 
   // Helper: format client debt with correct currency symbols
   const fmtDebt = (client: Client): string => {
@@ -513,12 +563,22 @@ export function ClientsTable() {
 
   const openPayment = (client: Client) => {
     setPaymentClient(client)
-    // Set default to first available non-credit method
     const firstNonCredit = paymentMethods.find(m => !m.isCredit)
-    setPaymentMethod(firstNonCredit?.code || paymentMethods[0]?.code || '')
+    const defaultCode = firstNonCredit?.code || paymentMethods[0]?.code || ''
+    setPaymentMethod(defaultCode)
     setPaymentReference('')
     // Set amount in reference currency by default
     setPaymentAmount(client.pendingBalance.toFixed(2))
+    // Initialize hybrid entries
+    const isLocal = firstNonCredit?.isLocalCurrency ?? false
+    setPaymentEntries([{
+      tempId: crypto.randomUUID(),
+      method: defaultCode,
+      amount: isLocal && exchangeRate > 0
+        ? (client.pendingBalance * exchangeRate).toFixed(2)
+        : client.pendingBalance.toFixed(2),
+      reference: '',
+    }])
     setShowPaymentDialog(true)
   }
 
@@ -572,43 +632,94 @@ export function ClientsTable() {
       toast.error('No hay moneda base configurada. Configure la moneda base en ajustes.')
       return
     }
-    const amt = parseFloat(paymentAmount)
-    if (!amt || amt <= 0) {
-      toast.error('El monto debe ser mayor a 0')
-      return
-    }
-    if (paymentAmountInRef > paymentClient.pendingBalance) {
-      toast.error(`El monto no puede ser mayor al saldo pendiente (${fmtDebt(paymentClient)})`)
-      return
-    }
-    if (selectedPm?.isCash && !openCashRegId) {
-      toast.error('No hay caja abierta. Abra una caja registradora antes de cobrar en efectivo.')
-      return
-    }
-    setPaying(true)
-    try {
-      // Send display amount (as user sees it) for correct storage in ClientPayment
-      const displayAmount = parseFloat(paymentAmount) || 0
-      const displayCurrencyCode = isLocalMethod ? (baseCode || 'VES') : (referenceCurrency || 'USD')
-      await api.post(`/api/clients/${paymentClient.id}/payment`, {
-        amount: paymentAmountInRef,
-        displayAmount,
-        displayCurrencyCode,
-        method: paymentMethod,
-        reference: paymentReference || undefined,
-        cashRegId: openCashRegId || undefined,
-        userId: user.id,
-        currencyId: baseCurrencyId,
-      })
-      const displayLabel = isLocalMethod ? `Bs. ${parseFloat(paymentAmount).toFixed(2)}` : `${fmt(paymentAmountInRef)}`
-      toast.success(`Cobro de ${displayLabel} registrado exitosamente`)
-      setShowPaymentDialog(false)
-      fetchClients()
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Error al registrar cobro'
-      toast.error(msg)
-    } finally {
-      setPaying(false)
+
+    if (isHybrid) {
+      // Validate hybrid entries
+      if (paymentEntries.length === 0) {
+        toast.error('Agregue al menos un método de pago')
+        return
+      }
+      for (const entry of paymentEntries) {
+        if (!parseFloat(entry.amount) || parseFloat(entry.amount) <= 0) {
+          toast.error('Todos los montos deben ser mayores a 0')
+          return
+        }
+        const pm = paymentMethods.find(m => m.code === entry.method)
+        if (pm?.isCash && !openCashRegId) {
+          toast.error('No hay caja abierta para pagos en efectivo.')
+          return
+        }
+      }
+      if (hybridTotalInRef > paymentClient.pendingBalance + 0.01) {
+        toast.error(`El total supera la deuda pendiente (${fmtDebt(paymentClient)})`)
+        return
+      }
+      setPaying(true)
+      try {
+        const entries = paymentEntries.map(e => {
+          const pm = paymentMethods.find(m => m.code === e.method)
+          const isLocal = pm?.isLocalCurrency ?? false
+          return {
+            method: e.method,
+            displayAmount: parseFloat(e.amount) || 0,
+            displayCurrencyCode: isLocal ? (baseCode || 'VES') : (referenceCurrency || 'USD'),
+            reference: e.reference || undefined,
+          }
+        })
+        await api.post(`/api/clients/${paymentClient.id}/payment`, {
+          entries,
+          cashRegId: openCashRegId || undefined,
+          userId: user.id,
+          currencyId: baseCurrencyId,
+        })
+        toast.success('Cobro híbrido registrado exitosamente')
+        setShowPaymentDialog(false)
+        fetchClients()
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : 'Error al registrar cobro'
+        toast.error(msg)
+      } finally {
+        setPaying(false)
+      }
+    } else {
+      // Single method payment (original flow)
+      const amt = parseFloat(paymentAmount)
+      if (!amt || amt <= 0) {
+        toast.error('El monto debe ser mayor a 0')
+        return
+      }
+      if (paymentAmountInRef > paymentClient.pendingBalance) {
+        toast.error(`El monto no puede ser mayor al saldo pendiente (${fmtDebt(paymentClient)})`)
+        return
+      }
+      if (selectedPm?.isCash && !openCashRegId) {
+        toast.error('No hay caja abierta. Abra una caja registradora antes de cobrar en efectivo.')
+        return
+      }
+      setPaying(true)
+      try {
+        const displayAmount = parseFloat(paymentAmount) || 0
+        const displayCurrencyCode = isLocalMethod ? (baseCode || 'VES') : (referenceCurrency || 'USD')
+        await api.post(`/api/clients/${paymentClient.id}/payment`, {
+          amount: paymentAmountInRef,
+          displayAmount,
+          displayCurrencyCode,
+          method: paymentMethod,
+          reference: paymentReference || undefined,
+          cashRegId: openCashRegId || undefined,
+          userId: user.id,
+          currencyId: baseCurrencyId,
+        })
+        const displayLabel = isLocalMethod ? `Bs. ${parseFloat(paymentAmount).toFixed(2)}` : `${fmt(paymentAmountInRef)}`
+        toast.success(`Cobro de ${displayLabel} registrado exitosamente`)
+        setShowPaymentDialog(false)
+        fetchClients()
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : 'Error al registrar cobro'
+        toast.error(msg)
+      } finally {
+        setPaying(false)
+      }
     }
   }
 
@@ -1325,24 +1436,26 @@ export function ClientsTable() {
 
       {/* Payment Dialog */}
       <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Cobrar a {paymentClient?.name}</DialogTitle>
-            <DialogDescription>
-              Registrar pago de deuda pendiente
-            </DialogDescription>
+            <DialogDescription>Registrar pago de deuda pendiente</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             {paymentClient && (
               <div className="rounded-md bg-muted p-3 space-y-1 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Cliente:</span>
-                  <span className="font-medium">{paymentClient.name}</span>
-                </div>
-                <div className="flex justify-between">
                   <span className="text-muted-foreground">Deuda pendiente:</span>
                   <span className="font-medium text-red-600">{fmtDebt(paymentClient)}</span>
                 </div>
+                {isHybrid && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Total a pagar:</span>
+                    <span className={`font-medium ${hybridTotalInRef > paymentClient.pendingBalance + 0.01 ? 'text-red-600' : ''}`}>
+                      {fmt(hybridTotalInRef)}
+                    </span>
+                  </div>
+                )}
               </div>
             )}
             <div className="space-y-2">
@@ -1355,63 +1468,146 @@ export function ClientsTable() {
                       {pm.name}{pm.isLocalCurrency ? ` (${baseSym})` : ` (${currencySymbol})`}
                     </SelectItem>
                   ))}
-                  {paymentMethods.length === 0 && (
-                    <SelectItem value="">Cargando métodos...</SelectItem>
+                  {paymentMethods.length > 1 && (
+                    <SelectItem value="hibrido">
+                      <span className="flex items-center gap-1.5">
+                        <Plus className="h-3.5 w-3.5" />
+                        Híbrido (múltiples métodos)
+                      </span>
+                    </SelectItem>
                   )}
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="cpaymentAmt">Monto a Cobrar {isLocalMethod ? '(Bs.)' : `(${currencySymbol})`}</Label>
-              <Input
-                id="cpaymentAmt"
-                type="number"
-                step="0.01"
-                min="0"
-                value={paymentAmount}
-                onChange={(e) => setPaymentAmount(e.target.value)}
-                placeholder="0.00"
-              />
-              {isLocalMethod && exchangeRate > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  Equivale a {fmt(paymentAmountInRef)} (Tasa: {exchangeRate.toFixed(2)} {baseSym}/{referenceCurrency})
-                </p>
-              )}
-              <p className="text-xs text-muted-foreground">
-                Saldo después del cobro: {(() => {
-                  const remaining = Math.max(0, (paymentClient?.pendingBalance || 0) - paymentAmountInRef)
-                  return isLocalMethod && exchangeRate > 0
-                    ? fmtWith(remaining * exchangeRate, baseCode || undefined)
-                    : fmtWith(remaining, referenceCurrency || undefined)
-                })()}
-              </p>
-            </div>
-            {selectedPm?.needsReference && (
-              <div className="space-y-2">
-                <Label>Referencia</Label>
-                <Input
-                  value={paymentReference}
-                  onChange={(e) => setPaymentReference(e.target.value)}
-                  placeholder="Número de referencia"
-                />
+
+            {isHybrid ? (
+              /* ── Hybrid payment entries ── */}
+              <div className="space-y-3">
+                {paymentEntries.map((entry, idx) => {
+                  const pm = paymentMethods.find(m => m.code === entry.method)
+                  const isLocal = pm?.isLocalCurrency ?? false
+                  return (
+                    <div key={entry.tempId} className="rounded-md border p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-muted-foreground">#{idx + 1}</span>
+                        {paymentEntries.length > 1 && (
+                          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removePaymentEntry(entry.tempId)}>
+                            <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                          </Button>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <div className="flex-1">
+                          <Select value={entry.method} onValueChange={(v) => updatePaymentEntry(entry.tempId, 'method', v)}>
+                            <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {paymentMethods.map(m => (
+                                <SelectItem key={m.code} value={m.code}>
+                                  {m.name}{m.isLocalCurrency ? ` (${baseSym})` : ` (${currencySymbol})`}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="w-32">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={entry.amount}
+                            onChange={(e) => updatePaymentEntry(entry.tempId, 'amount', e.target.value)}
+                            placeholder="0.00"
+                            className="h-9 text-right"
+                          />
+                        </div>
+                      </div>
+                      {isLocal && exchangeRate > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          Equivale a {fmt(entryToRef(entry))} ({exchangeRate.toFixed(2)} {baseSym}/{referenceCurrency})
+                        </p>
+                      )}
+                      {pm?.needsReference && (
+                        <Input
+                          value={entry.reference}
+                          onChange={(e) => updatePaymentEntry(entry.tempId, 'reference', e.target.value)}
+                          placeholder="Número de referencia"
+                          className="h-9"
+                        />
+                      )}
+                    </div>
+                  )
+                })}
+
+                {paymentEntries.length < paymentMethods.length && (
+                  <Button variant="outline" size="sm" onClick={addPaymentEntry} className="w-full border-dashed">
+                    <Plus className="mr-2 h-4 w-4" />
+                    Agregar método de pago
+                  </Button>
+                )}
+
+                {hybridRemaining > 0.01 && (
+                  <p className="text-xs text-center text-muted-foreground">
+                    Restante: {fmt(Math.max(0, hybridRemaining))}
+                  </p>
+                )}
               </div>
+            ) : (
+              /* ── Single method (original) ── */
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="cpaymentAmt">Monto a Cobrar {isLocalMethod ? '(Bs.)' : `(${currencySymbol})`}</Label>
+                  <Input
+                    id="cpaymentAmt"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={paymentAmount}
+                    onChange={(e) => setPaymentAmount(e.target.value)}
+                    placeholder="0.00"
+                  />
+                  {isLocalMethod && exchangeRate > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      Equivale a {fmt(paymentAmountInRef)} (Tasa: {exchangeRate.toFixed(2)} {baseSym}/{referenceCurrency})
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Saldo después del cobro: {(() => {
+                      const remaining = Math.max(0, (paymentClient?.pendingBalance || 0) - paymentAmountInRef)
+                      return isLocalMethod && exchangeRate > 0
+                        ? fmtWith(remaining * exchangeRate, baseCode || undefined)
+                        : fmtWith(remaining, referenceCurrency || undefined)
+                    })()}
+                  </p>
+                </div>
+                {selectedPm?.needsReference && (
+                  <div className="space-y-2">
+                    <Label>Referencia</Label>
+                    <Input
+                      value={paymentReference}
+                      onChange={(e) => setPaymentReference(e.target.value)}
+                      placeholder="Número de referencia"
+                    />
+                  </div>
+                )}
+              </>
             )}
-            {selectedPm?.isCash && !openCashRegId && (
+
+            {(!isHybrid ? selectedPm?.isCash : paymentEntries.some(e => paymentMethods.find(m => m.code === e.method)?.isCash)) && !openCashRegId && (
               <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
                 <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                 <div>
                   <p className="font-semibold">No hay caja registradora abierta</p>
-                  <p>Debe abrir una caja antes de registrar pagos en efectivo. El cobro no quedará registrado como entrada de caja.</p>
+                  <p>Debe abrir una caja antes de registrar pagos en efectivo.</p>
                 </div>
               </div>
             )}
             <Button
               className="w-full bg-primary hover:bg-primary/90 text-white"
               onClick={handlePayment}
-              disabled={paying || !parseFloat(paymentAmount) || parseFloat(paymentAmount) <= 0}
+              disabled={paying || (isHybrid ? paymentEntries.length === 0 : !parseFloat(paymentAmount))}
             >
               {paying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <DollarSign className="mr-2 h-4 w-4" />}
-              {paying ? 'Procesando...' : 'Registrar Cobro'}
+              {paying ? 'Procesando...' : isHybrid ? 'Registrar Cobro Híbrido' : 'Registrar Cobro'}
             </Button>
           </div>
         </DialogContent>
