@@ -41,7 +41,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { Plus, Search, Edit, Trash2, Package, Eye, EyeOff, Upload, ImageIcon, X, Loader2, Printer, Barcode, AlertTriangle, Ban, FileText, Percent } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Package, Eye, EyeOff, Upload, ImageIcon, X, Loader2, Printer, Barcode, AlertTriangle, Ban, FileText, Percent, FileSpreadsheet, Check } from 'lucide-react'
 import { toast } from 'sonner'
 import { ProductImportDialog } from './product-import-dialog'
 import { BarcodeLabelSelector } from './barcode-label-selector'
@@ -108,6 +108,46 @@ function fmtStock(n: number): string {
 
 // ── Component ───────────────────────────────────────────────────────────────
 
+// ── CSV export column definitions ──────────────────────────────────────
+
+interface CsvColumn {
+  key: string
+  label: string
+  getValue: (p: Product, branchId: string | null) => string
+}
+
+const ALL_CSV_COLUMNS: CsvColumn[] = [
+  { key: 'name',     label: 'Producto',     getValue: (p) => p.name },
+  { key: 'sku',      label: 'SKU',          getValue: (p) => p.sku || '' },
+  { key: 'category', label: 'Categoría',    getValue: (p) => p.category?.name || '' },
+  { key: 'cost',     label: 'Costo',        getValue: (p) => fmt(p.costAvg) },
+  { key: 'price',    label: 'Precio',       getValue: (p, branchId) => {
+    if (branchId) {
+      const inv = p.inventories.find(i => i.branchId === branchId)
+      if (inv && inv.price > 0) return fmt(inv.price)
+    }
+    return fmt(p.price)
+  }},
+  { key: 'stock',    label: 'Stock',        getValue: (p, branchId) => {
+    if (branchId) {
+      const inv = p.inventories.find(i => i.branchId === branchId)
+      return String(inv ? inv.stock : 0)
+    }
+    return String(p.inventories.reduce((s, i) => s + i.stock, 0))
+  }},
+  { key: 'minStock', label: 'Stock Mínimo', getValue: (p, branchId) => {
+    if (branchId) {
+      const inv = p.inventories.find(i => i.branchId === branchId)
+      return String(inv ? inv.minStock : 0)
+    }
+    return String(0)
+  }},
+  { key: 'status',   label: 'Estado',       getValue: (p) => p.active ? 'Activo' : 'Inactivo' },
+  { key: 'currency', label: 'Moneda',       getValue: (p) => p.currency ? `${p.currency.symbol} (${p.currency.code})` : '' },
+  { key: 'type',     label: 'Tipo',         getValue: (p) => p.type },
+]
+
+// Component
 export function ProductsTable() {
   const { permissions } = useAuth()
   const canManage = permissions.canManageProducts
@@ -146,6 +186,10 @@ export function ProductsTable() {
   const [hardDeleteDialogOpen, setHardDeleteDialogOpen] = useState(false)
   const [hardDeleteResult, setHardDeleteResult] = useState<{ dependencies: string[]; canHardDelete: boolean } | null>(null)
   const [priceAdjOpen, setPriceAdjOpen] = useState(false)
+  const [csvDialogOpen, setCsvDialogOpen] = useState(false)
+  const [selectedCsvKeys, setSelectedCsvKeys] = useState<Set<string>>(
+    new Set(ALL_CSV_COLUMNS.map(c => c.key))
+  )
   const mainBranchId = branches.find(b => b.isMain)?.id || branches[0]?.id || ''
 
   const handleDownloadPdf = async () => {
@@ -168,6 +212,39 @@ export function ProductsTable() {
     } finally {
       setDownloadingPdf(false)
     }
+  }
+
+  const handleExportCsv = () => {
+    if (selectedCsvKeys.size === 0) {
+      toast.error('Selecciona al menos una columna para exportar')
+      return
+    }
+    const columns = ALL_CSV_COLUMNS.filter(c => selectedCsvKeys.has(c.key))
+    const data = filteredProducts
+    const branchId = selectedBranchId || null
+
+    // Build CSV content with BOM for Excel UTF-8 compatibility
+    const header = columns.map(c => c.label).join(';')
+    const rows = data.map(p =>
+      columns.map(c => {
+        let val = c.getValue(p, branchId)
+        // Escape quotes and wrap if contains semicolon/quote/newline
+        if (val.includes(';') || val.includes('"') || val.includes('\n')) {
+          val = '"' + val.replace(/"/g, '""') + '"'
+        }
+        return val
+      }).join(';')
+    )
+    const csv = '\uFEFF' + [header, ...rows].join('\r\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `productos_${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+    setCsvDialogOpen(false)
+    toast.success(`Se exportaron ${data.length} productos en CSV`)
   }
 
   const handleOpenStockHistory = async () => {
@@ -612,6 +689,12 @@ export function ProductsTable() {
             onClick={() => setLabelsOpen(true)}
           >
             <Printer className="mr-2 h-4 w-4" /> Etiquetas
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setCsvDialogOpen(true)}
+          >
+            <FileSpreadsheet className="mr-2 h-4 w-4" /> CSV
           </Button>
           <Button
             variant="outline"
@@ -1186,6 +1269,66 @@ export function ProductsTable() {
         mainBranchId={mainBranchId}
         onSaved={fetchData}
       />
+
+      {/* CSV Export - Column Selector Dialog */}
+      <Dialog open={csvDialogOpen} onOpenChange={setCsvDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Exportar CSV</DialogTitle>
+            <DialogDescription>
+              Selecciona las columnas que quieres incluir en el archivo. Se exportarán {filteredProducts.length} producto{filteredProducts.length !== 1 ? 's' : ''}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 max-h-[50vh] overflow-y-auto py-2">
+            <div className="flex items-center justify-between mb-3">
+              <button
+                type="button"
+                className="text-xs text-primary hover:underline"
+                onClick={() => setSelectedCsvKeys(new Set(ALL_CSV_COLUMNS.map(c => c.key)))}
+              >Seleccionar todas</button>
+              <button
+                type="button"
+                className="text-xs text-muted-foreground hover:underline"
+                onClick={() => setSelectedCsvKeys(new Set())}
+              >Ninguna</button>
+            </div>
+            {ALL_CSV_COLUMNS.map(col => {
+              const checked = selectedCsvKeys.has(col.key)
+              return (
+                <label
+                  key={col.key}
+                  className={cn(
+                    'flex items-center gap-3 rounded-md border px-3 py-2.5 cursor-pointer transition-colors',
+                    checked
+                      ? 'border-primary bg-primary/5'
+                      : 'border-muted hover:border-muted-foreground/30'
+                  )}
+                >
+                  <div className={cn(
+                    'flex h-5 w-5 items-center justify-center rounded border transition-colors',
+                    checked
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-muted-foreground/30'
+                  )}>
+                    {checked && <Check className="h-3.5 w-3.5" />}
+                  </div>
+                  <span className="text-sm font-medium">{col.label}</span>
+                </label>
+              )
+            })}
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setCsvDialogOpen(false)}>Cancelar</Button>
+            <Button
+              onClick={handleExportCsv}
+              disabled={selectedCsvKeys.size === 0}
+            >
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+              Exportar ({selectedCsvKeys.size} col.)
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
     </>
   )
