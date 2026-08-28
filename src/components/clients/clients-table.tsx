@@ -1481,7 +1481,7 @@ export function ClientsTable() {
             </div>
 
             {isHybrid ? (
-              /* ── Hybrid payment entries ── */}
+              /* ── Hybrid payment entries ── */
               <div className="space-y-3">
                 {paymentEntries.map((entry, idx) => {
                   const pm = paymentMethods.find(m => m.code === entry.method)
