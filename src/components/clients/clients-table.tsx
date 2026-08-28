@@ -1468,14 +1468,12 @@ export function ClientsTable() {
                       {pm.name}{pm.isLocalCurrency ? ` (${baseSym})` : ` (${currencySymbol})`}
                     </SelectItem>
                   ))}
-                  {paymentMethods.length > 1 && (
-                    <SelectItem value="hibrido">
-                      <span className="flex items-center gap-1.5">
-                        <Plus className="h-3.5 w-3.5" />
-                        Híbrido (múltiples métodos)
-                      </span>
-                    </SelectItem>
-                  )}
+                  <SelectItem value="hibrido">
+                    <span className="flex items-center gap-1.5">
+                      <Plus className="h-3.5 w-3.5" />
+                      Híbrido (múltiples métodos)
+                    </span>
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
