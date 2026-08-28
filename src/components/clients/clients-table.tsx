@@ -42,8 +42,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart, Eye, EyeOff, AlertTriangle, CircleDollarSign } from 'lucide-react'
+import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart, Eye, EyeOff, AlertTriangle, CircleDollarSign, Banknote, CreditCard, ArrowLeftRight, Clock, Smartphone, type LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSetting } from '@/stores/use-app-store'
 import { useCurrency } from '@/hooks/use-currency'
@@ -58,6 +59,19 @@ interface PaymentMethodOption {
   isLocalCurrency: boolean
   isCash: boolean
   isCredit: boolean
+}
+
+const PM_ICON_MAP: Record<string, LucideIcon> = {
+  Banknote,
+  CreditCard,
+  ArrowLeftRight,
+  Clock,
+  Smartphone,
+  CircleDollarSign,
+}
+
+function getPmIcon(iconName: string): LucideIcon {
+  return PM_ICON_MAP[iconName] || CircleDollarSign
 }
 
 interface PaymentEntry {
@@ -1460,22 +1474,40 @@ export function ClientsTable() {
             )}
             <div className="space-y-2">
               <Label>Método de Pago</Label>
-              <Select value={paymentMethod} onValueChange={handlePaymentMethodChange}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {paymentMethods.map(pm => (
-                    <SelectItem key={pm.code} value={pm.code}>
-                      {pm.name}{pm.isLocalCurrency ? ` (${baseSym})` : ` (${currencySymbol})`}
-                    </SelectItem>
-                  ))}
-                  <SelectItem value="hibrido">
-                    <span className="flex items-center gap-1.5">
-                      <Plus className="h-3.5 w-3.5" />
-                      Híbrido (múltiples métodos)
-                    </span>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+              <RadioGroup value={paymentMethod} onValueChange={handlePaymentMethodChange} className="grid grid-cols-3 gap-2">
+                {paymentMethods.map((pm) => {
+                  const Icon = getPmIcon(pm.icon)
+                  return (
+                    <label
+                      key={pm.code}
+                      className={`flex cursor-pointer flex-col items-center gap-1.5 rounded-lg border-2 p-3 transition-colors ${
+                        paymentMethod === pm.code
+                          ? 'border-primary bg-primary/5 dark:bg-primary/10'
+                          : 'border-muted hover:border-muted-foreground/30'
+                      }`}
+                    >
+                      <RadioGroupItem value={pm.code} className="sr-only" />
+                      <Icon className={`h-5 w-5 ${paymentMethod === pm.code ? 'text-primary' : 'text-muted-foreground'}`} />
+                      <span className={`text-xs font-medium text-center leading-tight ${paymentMethod === pm.code ? 'text-primary' : ''}`}>
+                        {pm.name}
+                      </span>
+                    </label>
+                  )
+                })}
+                <label
+                  className={`flex cursor-pointer flex-col items-center gap-1.5 rounded-lg border-2 p-3 transition-colors ${
+                    isHybrid
+                      ? 'border-primary bg-primary/5 dark:bg-primary/10'
+                      : 'border-muted hover:border-muted-foreground/30'
+                  }`}
+                >
+                  <RadioGroupItem value="hibrido" className="sr-only" />
+                  <Plus className={`h-5 w-5 ${isHybrid ? 'text-primary' : 'text-muted-foreground'}`} />
+                  <span className={`text-xs font-medium text-center leading-tight ${isHybrid ? 'text-primary' : ''}`}>
+                    Híbrido
+                  </span>
+                </label>
+              </RadioGroup>
             </div>
 
             {isHybrid ? (
