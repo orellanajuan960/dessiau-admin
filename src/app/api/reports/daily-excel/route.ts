@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
 
     // ── Build workbook ──
     const wb = new ExcelJS.Workbook()
-    const fmtDate = `${d.toString().padStart(2, '0')}/${(m + 1).toString().padStart(2, '0')}/${y}`
+    const fmtDate = `${d.toString().padStart(2, '0')}-${(m + 1).toString().padStart(2, '0')}-${y}`
 
     // ── Sheet 1: Ventas ──
     const wsSales = wb.addWorksheet(`Ventas ${fmtDate}`)
